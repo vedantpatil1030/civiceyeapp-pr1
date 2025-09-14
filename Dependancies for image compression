@@ -1,0 +1,3 @@
+#Dependancies 
+
+npm install react-native-image-picker react-native-image-resizer react-native-fs
