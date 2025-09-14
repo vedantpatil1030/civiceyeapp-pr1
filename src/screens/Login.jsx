@@ -98,6 +98,15 @@ const LoginScreen = () => {
           Don't have an account? Register
         </Text>
       </TouchableOpacity>
+      {/* Link to Report page */}
+      <TouchableOpacity
+        style={{ marginTop: 16, alignSelf: 'center' }}
+        onPress={() => navigation.navigate('Report')}
+      >
+        <Text style={{ color: '#00b894', textDecorationLine: 'underline' }}>
+          Go to Report Issue
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 };
