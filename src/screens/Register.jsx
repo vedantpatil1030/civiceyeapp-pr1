@@ -92,23 +92,17 @@ const RegisterScreen = () => {
     }
     setLoading(true);
     try {
-      // --- Call backend API to send OTP ---
-      // const response = await fetch('https://your-backend.com/api/send-otp', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ phone }),
-      // });
-      // const data = await response.json();
-      // if (!response.ok) throw new Error(data.message || 'Failed to send OTP');
-      // --- End backend call 
-
+      const res = await axios.post("http://localhost:8000/api/v1/otp/send", {
+        mobileNumber: phone,
+      });
+      setVerificationId(res.data.data.verificationId);
       setOtpSent(true);
-      if (isFocused) Alert.alert('OTP Sent', 'An OTP has been sent to your phone.');
+      Alert.alert("OTP Sent","Check your phone for OTP");
     } catch (err) {
-      if (isFocused) Alert.alert('Error', err.message || 'Failed to send OTP.');
+      Alert.alert("Error", err.response?.data?.message || "Failed to send OTP");
     }
-    setLoading(false);
   };
+  
 
   const handleRegister = async () => {
     if (aadhaar.length !== 12) {
@@ -125,29 +119,30 @@ const RegisterScreen = () => {
     }
     setLoading(true);
     try {
-      // --- Call backend API to register user ---
-      // const response = await fetch('https://your-backend.com/api/register', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     name,
-      //     email,
-      //     phone,
-      //     aadhaar,
-      //     gender,
-      //     avatarUrl, // Send avatar URI or upload to server as needed
-      //     otp,
-      //   }),
-      // });
-      // const data = await response.json();
-      // if (!response.ok) throw new Error(data.message || 'Registration failed');
-      // // Save token to AsyncStorage for persistent login
-      // await AsyncStorage.setItem('authToken', data.token);
-      // --- End backend call ---
+      const resVerify = await fetch("http://localhost:8000/api/v1/otp/verify",{
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mobileNumber: phone, verificationId, code: otp })
+      });
 
-      if (isFocused) Alert.alert('Registered', 'Registration successful!');
+      const verifyData = await resVerify.json();
+      if (verifyData.status !== "VERIFIED") {
+        Alert.alert("Error", "OTP verification failed");
+        return;
+      }
+
+      const res = await fetch("http://localhost:8000/api/v1/users/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName: name, email, mobileNumber: phone, aadharNumber: aadhaar, gender, avatar: avatarUrl })
+      });
+
+      const data = await res.json();
+      Alert.alert("Success", "Registration successful!");
+      console.log("Tokens", data.data.accessToken, data.data.refreshToken);
+
     } catch (err) {
-      if (isFocused) Alert.alert('Error', err.message || 'Registration failed.');
+      Alert.alert("Error", err.message);
     }
     setLoading(false);
   };
