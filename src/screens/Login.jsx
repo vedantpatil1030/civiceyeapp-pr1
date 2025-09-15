@@ -103,8 +103,27 @@ const LoginScreen = () => {
         style={{ marginTop: 16, alignSelf: 'center' }}
         onPress={() => navigation.navigate('Report')}
       >
+
         <Text style={{ color: '#00b894', textDecorationLine: 'underline' }}>
           Go to Report Issue
+        </Text>
+      </TouchableOpacity>
+      {/* Link to Status page */}
+      <TouchableOpacity
+        style={{ marginTop: 16, alignSelf: 'center' }}
+        onPress={() => navigation.navigate('Status')}
+      >
+        <Text style={{ color: '#e84393', textDecorationLine: 'underline' }}>
+          Check Issue Status
+        </Text>
+      </TouchableOpacity>
+      {/* Link to Map page */}
+      <TouchableOpacity
+        style={{ marginTop: 16, alignSelf: 'center' }}
+        onPress={() => navigation.navigate('Map')}
+      >
+        <Text style={{ color: '#6c5ce7', textDecorationLine: 'underline' }}>
+          View Issues on Map
         </Text>
       </TouchableOpacity>
     </View>
