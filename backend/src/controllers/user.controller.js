@@ -21,12 +21,15 @@ const generateAccessAndRefreshTokens = async(userId) => {
     }
 }
 
+//Register Citizen
 const registerUser = asyncHandler( async (req,res) => {
-    const { fullName, email, mobileNumber, aadharNumber, gender } = req.body;
+    const { fullName, email, mobileNumber, aadharNumber, gender} = req.body;
 
-    if (!fullName || !email || !mobileNumber || !aadharNumber || !gender) {
+    if (!fullName || !email || !mobileNumber) {
         throw new ApiError(400, "All fields are required");
     }
+    const existingUser = await User.findOne({ $or: [{ email }, { mobileNumber }, { aadharNumber }]});
+    if(existingUser) throw new ApiError(409, "User already exists");
 
     let avatarUrl = "";
     if(req.file) {
@@ -34,8 +37,7 @@ const registerUser = asyncHandler( async (req,res) => {
         if(!uploadResponse) throw new ApiError(500,"Failed to upload avatar");
         avatarUrl = uploadResponse.secure_url;
     }
-    const existingUser = await User.findOne({ $or: [{ email }, { mobileNumber }, { aadharNumber }]});
-    if(existingUser) throw new ApiError(409, "User already exists");
+    
 
     const user = await User.create({
         fullName,
@@ -43,6 +45,7 @@ const registerUser = asyncHandler( async (req,res) => {
         mobileNumber,
         aadharNumber,
         gender,
+        role: "CITIZEN",
         avatar: avatarUrl,
     });
 
@@ -51,6 +54,66 @@ const registerUser = asyncHandler( async (req,res) => {
     return res.status(201).json(
         new ApiResponse(201, { user, accessToken, refreshToken }, "User registered successfully")
     );
+});
+
+//Create Department Admin
+const createDepartmentAdmin = asyncHandler( async (req,res) => {
+    if(req.user.role !== "MUNICIPAL_ADMIN")
+        throw new ApiError(403, "Only Municipal Admin can create Deppartment Admins");
+
+    const { fullName, email, mobileNumber, aadharNumber, gender, departmentId } = req.body;
+
+    if (!departmentId) throw new ApiError(400, "Department is required");
+
+    const existingUser = await User.findOne({ $or: [{ email }, { mobileNumber }] });
+    if (existingUser) throw new ApiError(409, "User already exists");
+
+    const user = await User.create({
+    fullName,
+    email,
+    mobileNumber,
+    aadharNumber,
+    gender,
+    role: "DEPARTMENT_ADMIN",
+    department: departmentId,
+  });
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, user, "Department Admin created"));
+});
+
+//Create Staff
+const createStaff = asyncHandler(async (req,res) => {
+    const { fullName, email, mobileNumber, aadharNumber, gender, departmentId } =
+    req.body;
+
+    if (!departmentId) throw new ApiError(400, "Department is required");
+
+    if (req.user.role === "DEPARTMENT_ADMIN") {
+    if (req.user.department.toString() !== departmentId)
+      throw new ApiError(403, "You can only create staff for your department");
+  }
+
+  if (!["MUNICIPAL_ADMIN", "DEPARTMENT_ADMIN"].includes(req.user.role)) {
+    throw new ApiError(403, "Not allowed to create staff");
+  }
+
+  const existingUser = await User.findOne({ $or: [{ email }, { mobileNumber }] });
+  if (existingUser) throw new ApiError(409, "User already exists");
+
+  const user = await User.create({
+    fullName,
+    email,
+    mobileNumber,
+    aadharNumber,
+    gender,
+    role: "STAFF",
+    department: departmentId,
+  });
+
+  return res.status(201).json(new ApiResponse(201, user, "Staff created"));
+
 });
 
 const checkRegisterUser = asyncHandler(async (req,res) => {
@@ -73,6 +136,8 @@ const checkLoginUser = asyncHandler(async (req,res) => {
 
 const loginUser = asyncHandler(async (req,res) => {
     const { mobileNumber } = req.body;
+
+    if (!mobileNumber) throw new ApiError(400, "Mobile number required");
 
     const user = await User.findOne({ mobileNumber });
 
@@ -187,5 +252,7 @@ export {
     checkLoginUser,
     checkRegisterUser,
     updateProfile,
-    updateAvatar
+    updateAvatar,
+    createStaff,
+    createDepartmentAdmin,
 }
