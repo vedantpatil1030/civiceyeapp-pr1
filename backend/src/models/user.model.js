@@ -12,7 +12,13 @@ const userSchema = new Schema(
         avatar: { type: String },
         refreshToken: { type: String },
 
-        role: { type: String, enum: ["CITIZEN"],default: "CITIZEN" },
+        role: { 
+          type: String, 
+          enum: ["CITIZEN","MUNICIPAL_ADMIN","DEPARTMENT_ADMIN","STAFF"],
+          default: "CITIZEN" 
+        },
+
+        department: { type: Schema.Types.ObjectId, ref: "Department" },
     },
     {timestamps: true}   
 );
@@ -22,8 +28,7 @@ userSchema.methods.generateAccessToken = function () {
     {
       _id: this._id,
       email: this.email,
-      fullName: this.fullName,
-      role: this.role
+      role: this.role,
     },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: process.env.ACCESS_TOKEN_EXPIRY }
