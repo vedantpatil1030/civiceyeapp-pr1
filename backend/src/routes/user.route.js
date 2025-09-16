@@ -6,6 +6,8 @@ import {
     checkLoginUser,
     checkRegisterUser,
     logoutUser,
+    updateProfile,
+    updateAvatar,
     createDepartmentAdmin,
     createStaff
 } from "../controllers/user.controller.js";
@@ -33,6 +35,8 @@ router.route("/login").post(loginUser)
 //Secured routes
 router.route("/logout").post(verifyJWT, logoutUser)
 router.route("/refresh-token").post(refreshAccessToken)
+router.route("/update-profile").put(verifyJWT, updateProfile)
+router.route("/update-avatar").put(verifyJWT, upload.single("avatar"), updateAvatar)
 
 export default router
 
