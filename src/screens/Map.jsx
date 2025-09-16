@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { LeafletView } from 'react-native-leaflet-view';
+import AccountIcon from '../components/AccountIcon';
 
 // Enhanced sample civic issues data across major Indian citiesrr
 const sampleIssues = [
@@ -426,6 +427,9 @@ const MapScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={[styles.container, backgroundStyle]}>
+            {/* Account Icon */}
+            <AccountIcon />
+            
             {/* Header */}
             <View style={styles.header}>
                 <Text style={[styles.title, { color: textColor }]}>🗺️ India Civic Issues Map</Text>
