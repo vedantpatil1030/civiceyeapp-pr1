@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import axios from 'axios';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,7 +18,9 @@ import {
   Linking,
 } from 'react-native';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
+
 import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const categories = [
   { id: 'INFRASTRUCTURE', name: 'Infrastructure', icon: '🏗️', color: '#ff4757' },
@@ -37,6 +40,7 @@ const ReportScreen = ({ navigation }) => {
   const [coordinates, setCoordinates] = useState(null);
   const [selectedImages, setSelectedImages] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [accessToken, setAccessToken] = useState('');
   
   const isDarkMode = useColorScheme() === 'dark';
   
@@ -47,6 +51,18 @@ const ReportScreen = ({ navigation }) => {
   const textColor = isDarkMode ? '#ffffff' : '#000000';
   const cardBgColor = isDarkMode ? '#1a1a1a' : '#ffffff';
   const borderColor = isDarkMode ? '#333333' : '#e1e8ed';
+
+  useEffect(() => {
+    const fetchToken = async () => {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        setAccessToken(token || '');
+      } catch (err) {
+        setAccessToken('ERROR');
+      }
+    };
+    fetchToken();
+  }, []);
 
   // Handle image selection
   const handleImagePicker = () => {
@@ -143,12 +159,7 @@ const ReportScreen = ({ navigation }) => {
       }
 
       if (response.assets && response.assets[0]) {
-        const newImage = {
-          uri: response.assets[0].uri,
-          type: response.assets[0].type || 'image/jpeg',
-          fileName: response.assets[0].fileName || `photo_${Date.now()}.jpg`,
-        };
-        setSelectedImages([...selectedImages, newImage]);
+        setSelectedImages([...selectedImages, response.assets[0]]);
         Alert.alert('Success', 'Photo has been added to your report');
       }
     });
@@ -238,14 +249,8 @@ const ReportScreen = ({ navigation }) => {
       }
 
       if (response.assets) {
-        const newImages = response.assets.map(asset => ({
-          uri: asset.uri,
-          type: asset.type || 'image/jpeg',
-          fileName: asset.fileName || `image_${Date.now()}.jpg`,
-        }));
-        
-        setSelectedImages([...selectedImages, ...newImages]);
-        Alert.alert('Success', `${newImages.length} photo(s) added to your report`);
+        setSelectedImages([...selectedImages, ...response.assets]);
+        Alert.alert('Success', `${response.assets.length} photo(s) added to your report`);
       }
     });
   };
@@ -326,28 +331,34 @@ const ReportScreen = ({ navigation }) => {
       Alert.alert('Missing Information', 'Please fill in title, description, and category.');
       return;
     }
-
     if (!location.trim()) {
       Alert.alert('Location Required', 'Please add your location before submitting.');
       return;
     }
-
     setIsSubmitting(true);
-
     try {
-      // Here you would typically send the data to your backend
-      // For now, we'll just simulate a successful submission
-      setTimeout(() => {
-        Alert.alert('Success', 'Your report has been submitted successfully!');
-        setTitle('');
-        setDescription('');
-        setSelectedCategory('');
-        setLocation('');
-        setCoordinates(null);
-        setSelectedImages([]);
-        setIsSubmitting(false);
-        navigation.goBack();
-      }, 1500);
+      // Prepare payload for backend
+      const payload = {
+        title,
+        description,
+        type: selectedCategory,
+        location: {
+          address: location,
+          latitude: coordinates?.latitude,
+          longitude: coordinates?.longitude
+        },
+        images: selectedImages // You may need to handle image upload separately
+      };
+  await axios.post('http://10.0.2.2:8000/api/v1/issues/create', payload);
+      Alert.alert('Success', 'Your report has been submitted successfully!');
+      setTitle('');
+      setDescription('');
+      setSelectedCategory('');
+      setLocation('');
+      setCoordinates(null);
+      setSelectedImages([]);
+      setIsSubmitting(false);
+      navigation.goBack();
     } catch (error) {
       Alert.alert('Error', 'Failed to submit report. Please try again.');
       setIsSubmitting(false);
@@ -357,6 +368,12 @@ const ReportScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={[styles.container, backgroundStyle]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Show access token for debugging */}
+        <View style={{ padding: 10, backgroundColor: '#eee', marginBottom: 10 }}>
+          <Text style={{ fontSize: 12, color: '#333', fontFamily: 'monospace' }} numberOfLines={2} selectable>
+            Access Token: {accessToken || 'Not found'}
+          </Text>
+        </View>
         <Text style={[styles.title, { color: textColor }]}>Report an Issue</Text>
         
         <View style={[styles.card, { backgroundColor: cardBgColor, borderColor }]}>

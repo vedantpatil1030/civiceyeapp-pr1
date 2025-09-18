@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -19,8 +21,24 @@ const StatusScreen = ({ navigation }) => {
   const [myReports, setMyReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  // const { user } = useAuth();
   const isDarkMode = useColorScheme() === 'dark';
+
+  // Helper function to format date
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  // Fetch user's issues from backend
+  // (removed duplicate fetchMyIssues definition here)
+
+  useEffect(() => {
+    fetchMyIssues();
+  }, []);
   
   const backgroundStyle = {
     backgroundColor: isDarkMode ? '#000000' : '#ffffff',
@@ -45,116 +63,24 @@ const StatusScreen = ({ navigation }) => {
     }
   };
 
-  // Helper function to format date
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  // Sample data for demonstration (replace with actual API call)
-  const sampleReports = [
-    {
-      id: '1',
-      title: 'Pothole on Main Street',
-      category: 'INFRASTRUCTURE',
-      status: 'OPEN',
-      submittedDate: formatDate(new Date('2024-01-15')),
-      lastUpdate: formatDate(new Date('2024-01-16')),
-      description: 'Large pothole causing traffic issues on Main Street near the shopping center.',
-      estimatedCompletion: 'TBD',
-      assignedDepartment: 'Public Works Department',
-      location: 'Main Street, Downtown',
-      upvotes: 15,
-      comments: 3,
-      updates: [
-        { date: formatDate(new Date('2024-01-15')), message: 'Report submitted and received.' },
-        { date: formatDate(new Date('2024-01-16')), message: 'Assigned to Public Works Department for review.' }
-      ]
-    },
-    {
-      id: '2',
-      title: 'Broken Street Light',
-      category: 'SAFETY',
-      status: 'IN_PROGRESS',
-      submittedDate: formatDate(new Date('2024-01-10')),
-      lastUpdate: formatDate(new Date('2024-01-18')),
-      description: 'Street light not working, creating safety hazard at night.',
-      estimatedCompletion: '2-3 days',
-      assignedDepartment: 'Electrical Department',
-      location: 'Oak Avenue',
-      upvotes: 8,
-      comments: 1,
-      updates: [
-        { date: formatDate(new Date('2024-01-10')), message: 'Report submitted and received.' },
-        { date: formatDate(new Date('2024-01-12')), message: 'Assigned to Electrical Department.' },
-        { date: formatDate(new Date('2024-01-18')), message: 'Repair crew dispatched to location.' }
-      ]
-    },
-    {
-      id: '3',
-      title: 'Garbage Collection Issue',
-      category: 'CLEANLINESS',
-      status: 'RESOLVED',
-      submittedDate: formatDate(new Date('2024-01-05')),
-      lastUpdate: formatDate(new Date('2024-01-20')),
-      description: 'Garbage not collected for over a week in residential area.',
-      estimatedCompletion: 'Completed',
-      assignedDepartment: 'Sanitation Department',
-      location: 'Residential Area Block A',
-      upvotes: 22,
-      comments: 5,
-      updates: [
-        { date: formatDate(new Date('2024-01-05')), message: 'Report submitted and received.' },
-        { date: formatDate(new Date('2024-01-06')), message: 'Assigned to Sanitation Department.' },
-        { date: formatDate(new Date('2024-01-08')), message: 'Collection schedule updated for the area.' },
-        { date: formatDate(new Date('2024-01-20')), message: 'Issue resolved. Regular collection resumed.' }
-      ]
-    }
-  ];
-
   // Fetch user's issues
   const fetchMyIssues = async () => {
-    // if (!user) return;
-    
     try {
       setLoading(true);
-      
-      // Commented out API call - replace with actual backend integration
-      // const response = await issuesAPI.getUserIssues();
-      // if (response.success) {
-      //   const transformedIssues = response.data.issues.map(issue => ({
-      //     id: issue._id,
-      //     title: issue.title,
-      //     category: issue.category,
-      //     status: issue.status || 'OPEN',
-      //     submittedDate: formatDate(issue.createdAt),
-      //     lastUpdate: formatDate(issue.updatedAt),
-      //     description: issue.description,
-      //     estimatedCompletion: 'TBD',
-      //     assignedDepartment: 'Pending Assignment',
-      //     location: `${issue.city || ''} ${issue.state || ''}`.trim() || issue.address || 'Unknown Location',
-      //     upvotes: issue.upvoteCount || 0,
-      //     comments: issue.commentCount || 0,
-      //     updates: [
-      //       { date: formatDate(issue.createdAt), message: 'Report submitted and received.' }
-      //     ]
-      //   }));
-      //   setMyReports(transformedIssues);
-      // }
-      
-      // For now, use sample data
-      setTimeout(() => {
-        setMyReports(sampleReports);
+      const token = await AsyncStorage.getItem('accessToken');
+      if (!token) {
+        Alert.alert('Error', 'No access token found. Please login again.');
         setLoading(false);
-      }, 1000);
-      
+        return;
+      }
+      const response = await axios.get('http://10.0.2.2:8000/api/v1/issues/my-reports', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMyReports(response.data || []);
+      setLoading(false);
     } catch (error) {
-      console.error('Error fetching user issues:', error);
-      Alert.alert('Error', 'Failed to load your issues. Please try again.');
+      console.error('Error fetching user issues:', error?.response?.data || error);
+      Alert.alert('Error', error?.response?.data?.message || 'Failed to load your issues. Please try again.');
       setLoading(false);
     }
   };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,9 @@ import {
   useColorScheme,
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import axios from 'axios';
 
 const AccountScreen = ({ navigation }) => {
@@ -42,30 +44,40 @@ const AccountScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
 
-  // Load user data on component mount
+  // Load user data from backend on mount
   useEffect(() => {
-    loadUserData();
-  }, []);
-
-  const loadUserData = async () => {
-    try {
-      setPageLoading(true);
-      const userData = await AsyncStorage.getItem('user');
-      if (userData) {
-        const user = JSON.parse(userData);
-        setUserDetails(user);
-      } else {
-        // If no user data in storage, you might want to fetch from API
-        Alert.alert('Error', 'No user data found. Please login again.');
-        navigation.navigate('Login');
+    const fetchProfile = async () => {
+      try {
+        setPageLoading(true);
+        const token = await AsyncStorage.getItem('accessToken');
+        if (!token) {
+          // Instead of forcing logout, just show error and let user retry
+          Alert.alert('Error', 'No access token found. Please try logging in again if the problem persists.');
+          setPageLoading(false);
+          return;
+        }
+        const response = await axios.get('http://10.0.2.2:8000/api/v1/users/me', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.data && response.data.data) {
+          setUserDetails(response.data.data);
+        } else {
+          Alert.alert('Error', 'Failed to load user profile.');
+        }
+      } catch (error) {
+        console.error('Error loading user profile:', error);
+        if (error.response && error.response.status === 401) {
+          Alert.alert('Session expired', 'Please login again.');
+          navigation.navigate('Login');
+        } else {
+          Alert.alert('Error', error.response?.data?.message || 'Failed to load user profile');
+        }
+      } finally {
+        setPageLoading(false);
       }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-      Alert.alert('Error', 'Failed to load user data');
-    } finally {
-      setPageLoading(false);
-    }
-  };
+    };
+    fetchProfile();
+  }, []);
 
   // Open edit modal for specific field
   const openEditModal = (field, currentValue) => {
@@ -92,7 +104,7 @@ const AccountScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('accessToken');
+  // const token = await AsyncStorage.getItem('accessToken');
       const response = await axios.put(
         `http://10.0.2.2:8000/api/v1/users/update-profile`,
         { [editField]: editValue },
@@ -111,9 +123,9 @@ const AccountScreen = ({ navigation }) => {
           [editField]: editValue,
         }));
 
-        // Update AsyncStorage
-        const updatedUser = { ...userDetails, [editField]: editValue };
-        await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+    // Update AsyncStorage with minimal info
+    const updatedUser = { _id: userDetails._id, fullName: editField === 'fullName' ? editValue : userDetails.fullName, role: userDetails.role };
+    // await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
 
         Alert.alert('Success', 'Profile updated successfully');
         setEditModalVisible(false);
@@ -144,44 +156,49 @@ const AccountScreen = ({ navigation }) => {
         }
       }
 
-      // Launch image picker
-      launchImageLibrary(
-        {
+      // Launch image picker (Promise API)
+      try {
+        const response = await launchImageLibrary({
           mediaType: 'photo',
           maxWidth: 300,
           maxHeight: 300,
           quality: 0.7,
-        },
-        async (response) => {
-          if (response.didCancel) return;
-          if (response.errorCode) {
-            Alert.alert('Error', response.errorMessage || 'Failed to pick image.');
-            return;
-          }
-          if (response.assets && response.assets.length > 0) {
-            const imageUri = response.assets[0].uri;
-            await uploadAvatar(imageUri);
-          }
+        });
+        if (response.didCancel) return;
+        if (response.errorCode) {
+          Alert.alert('Error', response.errorMessage || 'Failed to pick image.');
+          return;
         }
-      );
+        if (response.assets && response.assets.length > 0) {
+          await uploadAvatar(response.assets[0]);
+        }
+      } catch (err) {
+        Alert.alert('Error', 'Image picker failed to open.');
+      }
     } catch (error) {
       console.error('Avatar selection error:', error);
       Alert.alert('Error', 'Failed to select image');
     }
   };
 
-  // Upload avatar to server
-  const uploadAvatar = async (imageUri) => {
+  
+  const uploadAvatar = async (asset) => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('accessToken');
+      if (!token) {
+        Alert.alert('Error', 'No access token found. Please login again.');
+        setLoading(false);
+        return;
+      }
       const formData = new FormData();
       formData.append('avatar', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'avatar.jpg',
+        uri: asset.uri,
+        type: asset.type || 'image/jpeg',
+        name: asset.fileName || `avatar_${Date.now()}.jpg`,
       });
-
+      // Debug log
+      console.log('Uploading avatar:', asset);
       const response = await axios.put(
         `http://10.0.2.2:8000/api/v1/users/update-avatar`,
         formData,
@@ -192,22 +209,41 @@ const AccountScreen = ({ navigation }) => {
           },
         }
       );
-
-      if (response.data.success) {
+      if (response.data && response.data.data && response.data.data.avatar) {
         const newAvatarUrl = response.data.data.avatar;
         setUserDetails(prev => ({ ...prev, avatar: newAvatarUrl }));
-        
-        // Update AsyncStorage
-        const updatedUser = { ...userDetails, avatar: newAvatarUrl };
+        // Update AsyncStorage with minimal info
+        const updatedUser = { _id: userDetails._id, fullName: userDetails.fullName, role: userDetails.role };
         await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-
         Alert.alert('Success', 'Avatar updated successfully');
       } else {
-        Alert.alert('Error', 'Failed to update avatar');
+        Alert.alert('Error', response.data?.message || 'Failed to update avatar');
+        // If backend returns avatar URL even on error, update UI
+        if (response.data?.data?.avatar) {
+          setUserDetails(prev => ({ ...prev, avatar: response.data.data.avatar }));
+        }
       }
     } catch (error) {
-      console.error('Avatar upload error:', error);
-      Alert.alert('Error', error.response?.data?.message || 'Failed to upload avatar');
+      console.error('Avatar upload error:', error, error?.response?.data);
+      let errorMsg = 'Failed to upload avatar';
+      if (error.response && error.response.data) {
+        if (typeof error.response.data === 'string') {
+          errorMsg = error.response.data;
+        } else if (error.response.data.message) {
+          errorMsg = error.response.data.message;
+        } else if (typeof error.response.data.error === 'string') {
+          errorMsg = error.response.data.error;
+        } else if (error.response.data.errors) {
+          errorMsg = JSON.stringify(error.response.data.errors);
+        }
+        // If backend returns avatar URL even on error, update UI
+        if (error.response.data.data?.avatar) {
+          setUserDetails(prev => ({ ...prev, avatar: error.response.data.data.avatar }));
+        }
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      Alert.alert('Error', errorMsg);
     } finally {
       setLoading(false);
     }
@@ -264,17 +300,19 @@ const AccountScreen = ({ navigation }) => {
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={updateAvatar} style={styles.avatarContainer}>
-          <Image
-            source={{
-              uri: userDetails.avatar || 'https://www.svgrepo.com/show/382106/profile-avatar.svg'
-            }}
-            style={styles.avatar}
-          />
-          <View style={styles.cameraIcon}>
+        <View style={styles.avatarContainer}>
+          <TouchableOpacity onPress={updateAvatar} activeOpacity={0.7} style={{ borderRadius: 50 }}>
+            <Image
+              source={{
+                uri: userDetails.avatar || 'https://www.svgrepo.com/show/382106/profile-avatar.svg'
+              }}
+              style={styles.avatar}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={updateAvatar} activeOpacity={0.7} style={styles.cameraIcon} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={styles.cameraIconText}>📷</Text>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.userName}>{userDetails.fullName}</Text>
         <Text style={styles.userRole}>{userDetails.role}</Text>
       </View>
