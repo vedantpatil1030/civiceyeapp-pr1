@@ -6,13 +6,21 @@ const issueSchema = new Schema({
     title: { type: String, required: true},
     description: { type: String, required: true },
     type: { type : String, required: true },
+
     images: [{ type: String}], //URL's
 
     location: {
-        latitude: { type: Number, required: true },
-        longitude: { type: Number, required: true },
-        address: { type: String }
+    type: {
+      type: String,
+      enum: ["Point"],
+      required: true
     },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      required: true
+    },
+    address: { type: String }
+  },
 
     classifiedDept : { type: String },
     finalDept: { type: String },
@@ -52,8 +60,9 @@ const issueSchema = new Schema({
         status: String,
         changedBy: { type: Schema.Types.ObjectId, ref: "User"},
         timestamp: { type: Date, default: Date.now }
-    }]
+    }],
+    reportUrl: { type: String },
 },{ timestamps: true });
 
-issueSchema.index({ "Location": "2dsphere"});
+issueSchema.index({ "location": "2dsphere"});
 export const Issue = mongoose.model("Issue", issueSchema);
