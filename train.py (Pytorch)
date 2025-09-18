@@ -1,0 +1,70 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import models, transforms
+from torch.utils.data import Dataset, DataLoader
+from PIL import Image
+import pandas as pd
+
+# ----- Custom Dataset -----
+class CivicDataset(Dataset):
+    def __init__(self, csv_file, transform=None):
+        self.data = pd.read_csv(csv_file)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        row = self.data.iloc[idx]
+        image = Image.open(row['image_path']).convert("RGB")
+        if self.transform:
+            image = self.transform(image)
+
+        # Metadata features
+        loc_type = 1 if row['location_type'] in ["highway", "school", "hospital"] else 0
+        reports = row['reports_count']
+        meta = torch.tensor([loc_type, reports], dtype=torch.float32)
+
+        label = int(row['priority'])
+        return image, meta, label
+
+# ----- Model -----
+class SeverityModel(nn.Module):
+    def __init__(self):
+        super(SeverityModel, self).__init__()
+        self.cnn = models.resnet18(pretrained=True)
+        self.cnn.fc = nn.Identity()  # remove last layer -> 512 features
+        self.fc1 = nn.Linear(512+2, 128)
+        self.fc2 = nn.Linear(128, 3)  # 3 classes: Low, Medium, High
+
+    def forward(self, img, meta):
+        img_feat = self.cnn(img)
+        combined = torch.cat((img_feat, meta), dim=1)
+        x = torch.relu(self.fc1(combined))
+        x = self.fc2(x)
+        return x
+
+# ----- Training -----
+transform = transforms.Compose([
+    transforms.Resize((224,224)),
+    transforms.ToTensor()
+])
+
+dataset = CivicDataset("data.csv", transform=transform)
+loader = DataLoader(dataset, batch_size=8, shuffle=True)
+
+model = SeverityModel()
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+for epoch in range(5):  # train longer in real case
+    for img, meta, label in loader:
+        optimizer.zero_grad()
+        outputs = model(img, meta)
+        loss = criterion(outputs, label)
+        loss.backward()
+        optimizer.step()
+    print(f"Epoch {epoch+1} - Loss: {loss.item():.4f}")
+
+torch.save(model.state_dict(), "severity_model.pth")
