@@ -74,12 +74,66 @@ router.route("/:issueId/comment").post(
 );
 
 //To get the nearby issues
-router.route("/nearby").post(
+router.route("/nearby").get(
     verifyJWT,
     nearbyIssues
 );
 
+router.route("/getAllIssues").get(
+    verifyJWT,
+    getAllIssues
+);
 
+//Get Issue By ID
+router.route("/issues/:issueId").get(
+    verifyJWT,
+    getIssueById
+);
+
+//Reassign Dept Manually
+router.route("/issues/:issueId/reassign-dept").patch(
+    verifyJWT,
+    reassignDept
+);
+
+//To get Issue Progress
+router.route("/issue/:issueId/progress").get(
+    verifyJWT,
+    getIssueProgress
+);
+
+//To get Dept Issues 
+router.route("/departments/:deptName/issues").get(
+    verifyJWT,
+    getDeptIssues
+);
+
+//TO get Issue By staff
+router.route("/issues/:issueId/staff").get(
+    verifyJWT,
+    getIssueStaff
+);
+
+//TO get assign staff to particular issue
+router.route("/issues/:issueId/assign-staff").get(
+    verifyJWT,
+    assignStaff
+);
+
+//TO verify Issue
+router.route("/issues/:issueId/verify").post(
+    verifyJWT,
+    verifyIssue
+);
+
+//To raise the complaint for the department
+router.route("/departments/:deptId/complaint").post(
+    verifyJWT,
+    raiseDeptComplaint
+)
+
+//To assign staff manually
+router.route("/issues/:issueId/assign-staff")
 
 // Create a new issue (personalized)
 router.post("/create", verifyJWT, createIssue);

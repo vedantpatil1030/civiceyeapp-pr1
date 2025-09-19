@@ -8,6 +8,7 @@ import fs from "fs/promises";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { generateIssueReport } from "../services/report.service.js";
+import { Staff } from "../models/staff.model.js"
 
 
 const createIssue = asyncHandler(async (req, res) => {
@@ -245,7 +246,7 @@ const nearbyIssues = asyncHandler(async (req, res) => {
 
   return res.json({ data: issues });
 });
-// Get all issues for map view
+// // Get all issues for map view
 // const getAllIssues = asyncHandler(async (req, res) => {
 //     try {
 //         const issues = await Issue.find()
