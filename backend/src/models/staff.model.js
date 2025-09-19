@@ -1,3 +1,4 @@
+import mongoose, { Schema } from "mongoose";
 const staffSchema = new Schema({
     name: String,
     userRef: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
