@@ -70,17 +70,40 @@ const StatusScreen = ({ navigation }) => {
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         Alert.alert('Error', 'No access token found. Please login again.');
+        navigation.navigate('Login');
         setLoading(false);
         return;
       }
+
       const response = await axios.get('http://10.0.2.2:8000/api/v1/issues/my-reports', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
-      setMyReports(response.data || []);
-      setLoading(false);
+
+      if (response.status === 401) {
+        Alert.alert('Session Expired', 'Please login again');
+        navigation.navigate('Login');
+        return;
+      }
+
+      // Handle the ApiResponse wrapper format
+      const data = response.data?.data?.issues || [];
+      if (!Array.isArray(data)) {
+        console.error('Invalid data format received:', response.data);
+        throw new Error('Invalid data format received from server');
+      }
+
+      setMyReports(data);
     } catch (error) {
       console.error('Error fetching user issues:', error?.response?.data || error);
-      Alert.alert('Error', error?.response?.data?.message || 'Failed to load your issues. Please try again.');
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load your issues. Please try again.';
+      Alert.alert('Error', errorMessage);
+      if (error?.response?.status === 401) {
+        navigation.navigate('Login');
+      }
+    } finally {
       setLoading(false);
     }
   };
@@ -97,7 +120,8 @@ const StatusScreen = ({ navigation }) => {
   }, []);
 
   // Filter reports based on selected filter
-  const filteredReports = myReports.filter(report => {
+  const filteredReports = Array.isArray(myReports) ? myReports.filter(report => {
+    if (!report) return false;
     if (selectedFilter === 'all') return true;
     
     const statusMap = {
@@ -108,7 +132,7 @@ const StatusScreen = ({ navigation }) => {
     };
     
     return statusMap[selectedFilter]?.includes(report.status);
-  });
+  }) : [];
 
   // Calculate counts for filters
   const getFilterCounts = () => {
@@ -132,18 +156,28 @@ const StatusScreen = ({ navigation }) => {
     { id: 'completed', name: 'Completed', count: filterCounts.completed },
   ];
 
-  // Get category color (similar to Report.jsx categories)
-  const getCategoryColor = (category) => {
-    const categoryColors = {
-      'INFRASTRUCTURE': '#ff4757',
-      'SAFETY': '#ff6b6b',
-      'ENVIRONMENT': '#2ed573',
-      'TRANSPORT': '#ffa502',
-      'CLEANLINESS': '#3742fa',
-      'GOVERNANCE': '#5f27cd',
-      'OTHER': '#747d8c'
+  // Get category color and icon
+  const getCategoryInfo = (category) => {
+    const categoryData = {
+      'INFRASTRUCTURE': { color: '#ff4757', icon: '🏗️' },
+      'SAFETY': { color: '#ff6b6b', icon: '🛡️' },
+      'ENVIRONMENT': { color: '#2ed573', icon: '🌿' },
+      'TRANSPORT': { color: '#ffa502', icon: '🚗' },
+      'CLEANLINESS': { color: '#3742fa', icon: '🧹' },
+      'GOVERNANCE': { color: '#5f27cd', icon: '📋' },
+      'OTHER': { color: '#747d8c', icon: '📝' }
     };
-    return categoryColors[category] || '#747d8c';
+    return categoryData[category] || { color: '#747d8c', icon: '📝' };
+  };
+
+  // Get priority icon
+  const getPriorityIcon = (priority) => {
+    switch(priority?.toLowerCase()) {
+      case 'high': return '⚡⚡⚡';
+      case 'medium': return '⚡⚡';
+      case 'low': return '⚡';
+      default: return '⚡';
+    }
   };
 
   // Handle viewing details of a report

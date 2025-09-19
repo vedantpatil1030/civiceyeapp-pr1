@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { LeafletView } from 'react-native-leaflet-view';
 import AccountIcon from '../components/AccountIcon';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 
@@ -40,25 +41,61 @@ const MapScreen = ({ navigation }) => {
     const borderColor = isDarkMode ? '#333333' : '#dddddd';
     const cardBgColor = isDarkMode ? '#1e1e1e' : '#ffffff';
 
-    // Fetch issues from backend
+    // Loading component
+    const LoadingOverlay = () => (
+        <View style={[styles.loadingOverlay, { backgroundColor: cardBgColor }]}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={[styles.loadingText, { color: textColor }]}>Loading issues...</Text>
+        </View>
+    );
+
+    // Fetch all issues from backend
     useEffect(() => {
         const fetchIssues = async () => {
             setLoading(true);
             try {
-                const res = await axios.get('http://10.0.2.2:8000/api/v1/issues/my-reports');
-                setIssues(res.data || []);
+                const token = await AsyncStorage.getItem('accessToken');
+                if (!token) {
+                    Alert.alert('Error', 'Please login to view issues');
+                    setLoading(false);
+                    return;
+                }
+                
+                const res = await axios.get('http://10.0.2.2:8000/api/v1/issues/all', {
+                    headers: { 
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = res.data?.data?.issues || [];
+                if (!Array.isArray(data)) {
+                    console.error('Invalid data format received:', res.data);
+                    throw new Error('Invalid data format received from server');
+                }
+                setIssues(data);
             } catch (err) {
+                console.error('Error fetching issues:', err?.response?.data || err);
+                Alert.alert('Error', 'Failed to load issues. Please try again.');
                 setIssues([]);
             }
             setLoading(false);
         };
         fetchIssues();
+
+        // Refresh data every 30 seconds
+        const interval = setInterval(fetchIssues, 30000);
+        return () => clearInterval(interval);
     }, []);
 
     // Filter issues based on selected filter
-    const filteredIssues = selectedFilter === 'all'
-        ? issues
-        : issues.filter(issue => (issue.type || issue.category) === selectedFilter);
+    const filteredIssues = Array.isArray(issues) ? (
+        selectedFilter === 'all'
+            ? issues
+            : issues.filter(issue => {
+                const category = (issue.type || issue.category || '').toLowerCase();
+                return category === selectedFilter.toLowerCase();
+              })
+    ) : [];
 
     // Filter options
     const filters = [
@@ -82,6 +119,16 @@ const MapScreen = ({ navigation }) => {
         return icons[category] || '📝';
     };
 
+    // Format date helper function
+    const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    };
+
     // Create detailed pin-style markers
     const mapMarkers = filteredIssues.map(issue => {
         let pinColor = '#ff4757'; // Default red for open
@@ -95,16 +142,22 @@ const MapScreen = ({ navigation }) => {
             pinColor = '#2ed573'; // Green  
             statusIcon = '✅';
         }
+        
+        // Enhanced priority visualization
         let priorityRing = '';
+        let priorityIcon = '⚡';
         if (issue.priority === 'high') {
             priorityRing = '3px solid #ff0000';
+            priorityIcon = '⚡⚡⚡';
         } else if (issue.priority === 'medium') {
             priorityRing = '2px solid #ffa500';
         } else {
             priorityRing = '1px solid #888888';
         }
         return {
-            position: { lat: issue.location?.latitude, lng: issue.location?.longitude },
+            position: issue.location?.coordinates ? 
+                { lat: issue.location.coordinates[1], lng: issue.location.coordinates[0] } :
+                { lat: 28.6139, lng: 77.2090 }, // Default to Delhi if no coordinates
             icon: `
                 <div style="
                     position: relative;
@@ -176,7 +229,7 @@ const MapScreen = ({ navigation }) => {
                 </div>
             `,
             size: [40, 50],
-            id: issue.id.toString()
+            id: issue._id ? issue._id.toString() : String(Math.random())
         };
     });
 
@@ -188,8 +241,13 @@ const MapScreen = ({ navigation }) => {
             // LeafletView sends message directly, not in nativeEvent.data
             let data;
             if (message.nativeEvent && message.nativeEvent.data) {
-                // Try parsing as string first
-                data = JSON.parse(message.nativeEvent.data);
+                try {
+                    // Try parsing as string first
+                    data = JSON.parse(message.nativeEvent.data);
+                } catch (e) {
+                    console.log('Error parsing message data:', e);
+                    data = message.nativeEvent.data;
+                }
             } else if (typeof message === 'object' && message.event) {
                 // Message is already an object
                 data = message;
@@ -311,29 +369,33 @@ const MapScreen = ({ navigation }) => {
                 </ScrollView>
             </View>
 
-            {/* Map - Simple configuration without injected JavaScript */}
-            <View style={styles.mapContainer}>
-                <LeafletView
-                    mapCenterPosition={markerPosition}
-                    zoom={mapZoom}
-                    onMessageReceived={handleMessage}
-                    mapMarkers={mapMarkers}
-                    renderLoading={() => (
-                        <View style={styles.loadingContainer}>
-                            <Text style={[styles.loadingText, { color: textColor }]}>Loading map...</Text>
-                        </View>
-                    )}
-                    onError={(error) => {
-                        console.log('LeafletView Error:', error);
-                    }}
-                    onLoadEnd={() => {
-                        console.log('Map loaded successfully');
-                    }}
-                    onLoadStart={() => {
-                        console.log('Map loading started');
-                    }}
-                />
-            </View>
+            {/* Map Component */}
+            {loading ? (
+                <View style={styles.mapContainer}>
+                    <View style={styles.loadingContainer}>
+                        <Text style={[styles.loadingText, { color: textColor }]}>Loading map...</Text>
+                    </View>
+                </View>
+            ) : (
+                <View style={styles.mapContainer} key="map-container">
+                    <LeafletView
+                        key="leaflet-view"
+                        mapCenterPosition={markerPosition}
+                        zoom={mapZoom}
+                        onMessageReceived={handleMessage}
+                        mapMarkers={mapMarkers}
+                        onError={(error) => {
+                            console.log('LeafletView Error:', error);
+                        }}
+                        onLoadEnd={() => {
+                            console.log('Map loaded successfully');
+                        }}
+                        onLoadStart={() => {
+                            console.log('Map loading started');
+                        }}
+                    />
+                </View>
+            )}
 
             {/* Enhanced Statistics */}
             <View style={styles.statisticsSection}>
@@ -509,6 +571,27 @@ const MapScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    },
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+        opacity: 0.9,
+    },
+    loadingText: {
+        marginTop: 10,
+        fontSize: 16,
+    },
     container: {
         flex: 1,
     },
