@@ -143,8 +143,28 @@ const checkRegisterUser = asyncHandler(async (req,res) => {
 
 const checkLoginUser = asyncHandler(async (req,res) => {
     const { mobileNumber } = req.body;
-    const user = await User.findOne({ mobileNumber });
-    if (!user) throw new ApiError(404, "user not found, please register");
+    const normalizedPhone = mobileNumber.toString().replace(/\D/g, '');
+    console.log("🔍 Checking login for mobile:", mobileNumber);
+    console.log("📱 Normalized phone:", normalizedPhone);
+    
+    // Debug: List all users in the database
+    const allUsers = await User.find({});
+    console.log("📊 All users in database:", allUsers.map(u => ({
+        mobileNumber: u.mobileNumber,
+        name: u.fullName
+    })));
+    
+    const user = await User.findOne().byPhone(normalizedPhone);
+    console.log("🔎 User found:", user ? "Yes" : "No");
+    if (user) console.log("👤 User details:", JSON.stringify(user, null, 2));
+    
+    // Try a case-insensitive search as well
+    const userInsensitive = await User.findOne({
+        mobileNumber: { $regex: new RegExp(`^${mobileNumber}$`, 'i') }
+    });
+    if (userInsensitive) console.log("🔍 Found user with case-insensitive search:", userInsensitive.mobileNumber);
+    
+    if (!user && !userInsensitive) throw new ApiError(404, "user not found, please register");
     return res.json(new ApiResponse(200,null,"User exists, proceed with login"));
 });
 

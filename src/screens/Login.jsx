@@ -33,9 +33,11 @@ const LoginScreen = () => {
 
     setLoading(true);
     try {
-      console.log('📞 Checking if user exists:', phone);
+      // Ensure phone number is a string and remove any spaces
+      const formattedPhone = phone.toString().trim();
+      console.log('📞 Checking if user exists:', formattedPhone);
       const response = await axios.post("http://10.0.2.2:8000/api/v1/users/check-login", {
-        mobileNumber: phone
+        mobileNumber: formattedPhone
       });
 
       console.log('✅ User check response:', response.data);
@@ -54,18 +56,21 @@ const LoginScreen = () => {
         );
       }
     } catch (error) {
-      console.error('❌ User check error:', error);
+      console.log('❌ User check error:', error.response?.data?.message || error.message);
       if (error.response?.status === 404) {
+        // This is an expected error when user is not registered
         Alert.alert(
-          'User Not Found', 
-          'No account found with this mobile number. Please register first.',
+          'Registration Required', 
+          'This mobile number is not registered. Would you like to create a new account?',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Register', onPress: () => navigation.navigate('Register') }
+            { text: 'Register Now', onPress: () => navigation.navigate('Register') }
           ]
         );
       } else {
-        Alert.alert('Error', error.response?.data?.message || 'Failed to verify user');
+        // Handle other types of errors
+        const errorMessage = error.response?.data?.message || 'Unable to connect to the server. Please check your internet connection.';
+        Alert.alert('Error', errorMessage);
       }
     } finally {
       setLoading(false);

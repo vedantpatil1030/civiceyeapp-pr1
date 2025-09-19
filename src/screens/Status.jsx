@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
@@ -13,15 +12,17 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-// import { issuesAPI } from '../services/api';
-// import { useAuth } from '../contexts/AuthContext';
+import api from '../../services/api';
 
 const StatusScreen = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [myReports, setMyReports] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);  // Start with loading true
   const [refreshing, setRefreshing] = useState(false);
   const isDarkMode = useColorScheme() === 'dark';
+  
+  // Calculate counts for different statuses
+  
 
   // Helper function to format date
   const formatDate = (dateString) => {
@@ -63,30 +64,49 @@ const StatusScreen = ({ navigation }) => {
     }
   };
 
+  // Helper function to get priority color
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'HIGH':
+        return '#ff4757'; // Red
+      case 'MEDIUM':
+        return '#ffa502'; // Orange/Yellow
+      case 'LOW':
+        return '#2ed573'; // Green
+      default:
+        return '#ff4757'; // Default to red
+    }
+  };
+
+  // Helper function to get category/type color
+  const getCategoryColor = (category) => {
+    switch (category) {
+      case 'WATER':
+        return '#3498db'; // Blue for water issues
+      case 'ROADS':
+        return '#95a5a6'; // Gray for road issues
+      case 'ELECTRICITY':
+        return '#f1c40f'; // Yellow for electricity
+      case 'SANITATION':
+        return '#27ae60'; // Green for sanitation
+      case 'INFRASTRUCTURE':
+        return '#e67e22'; // Orange for infrastructure
+      case 'ENVIRONMENT':
+        return '#2ecc71'; // Light green for environment
+      case 'OTHER':
+        return '#9b59b6'; // Purple for other issues
+      default:
+        return '#bdc3c7'; // Default light gray
+    }
+  };
+
   // Fetch user's issues
   const fetchMyIssues = async () => {
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        Alert.alert('Error', 'No access token found. Please login again.');
-        navigation.navigate('Login');
-        setLoading(false);
-        return;
-      }
-
-      const response = await axios.get('http://10.0.2.2:8000/api/v1/issues/my-reports', {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.status === 401) {
-        Alert.alert('Session Expired', 'Please login again');
-        navigation.navigate('Login');
-        return;
-      }
+      
+      // We don't need to manually get the token, the api instance handles that
+      const response = await api.get('/issues/my-reports');
 
       // Handle the ApiResponse wrapper format
       const data = response.data?.data?.issues || [];
@@ -99,9 +119,16 @@ const StatusScreen = ({ navigation }) => {
     } catch (error) {
       console.error('Error fetching user issues:', error?.response?.data || error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load your issues. Please try again.';
-      Alert.alert('Error', errorMessage);
+      
       if (error?.response?.status === 401) {
-        navigation.navigate('Login');
+        await AsyncStorage.clear(); // Clear all stored data
+        Alert.alert('Session Expired', 'Please login again to continue.');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' }]
+        });
+      } else {
+        Alert.alert('Error', errorMessage);
       }
     } finally {
       setLoading(false);
@@ -182,24 +209,41 @@ const StatusScreen = ({ navigation }) => {
 
   // Handle viewing details of a report
   const handleViewDetails = (report) => {
+    // Create message with safe handling of updates
+    const latestUpdate = report.updates && report.updates.length > 0 
+      ? `\n\nLatest Update:\n${report.updates[report.updates.length - 1].message}`
+      : '';
+
     Alert.alert(
       `Report Details`,
-      `Title: ${report.title}\n\nStatus: ${report.status}\nCategory: ${report.category}\nLocation: ${report.location}\n\nDescription:\n${report.description}\n\nLatest Update:\n${report.updates[report.updates.length - 1].message}`,
+      `Title: ${report.title || 'N/A'}\n\nStatus: ${report.status || 'N/A'}\nCategory: ${report.category || 'N/A'}\nLocation: ${report.location || 'N/A'}\n\nDescription:\n${report.description || 'No description provided'}${latestUpdate}`,
       [
-        { text: 'View All Updates', onPress: () => showAllUpdates(report) },
+        ...(report.updates && report.updates.length > 0 
+          ? [{ text: 'View All Updates', onPress: () => showAllUpdates(report) }]
+          : []
+        ),
         { text: 'Close', style: 'cancel' }
       ]
     );
   };
 
   const showAllUpdates = (report) => {
+    if (!report.updates || report.updates.length === 0) {
+      Alert.alert(
+        `Updates for Report #${report.id || ''}`,
+        'No updates available for this report.',
+        [{ text: 'Close' }]
+      );
+      return;
+    }
+
     const updatesText = report.updates
-      .map(update => `${update.date}: ${update.message}`)
+      .map((update, index) => `${update.date || 'Date not available'}: ${update.message || 'No message'}`)
       .join('\n\n');
     
     Alert.alert(
-      `Updates for Report #${report.id}`,
-      updatesText,
+      `Updates for Report #${report.id || ''}`,
+      updatesText || 'No updates available',
       [{ text: 'Close' }]
     );
   };
@@ -234,9 +278,9 @@ const StatusScreen = ({ navigation }) => {
       {/* Filters */}
       <View style={styles.filtersSection}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-          {statusFilters.map((filter) => (
+          {statusFilters.map((filter, index) => (
             <TouchableOpacity
-              key={filter.id}
+              key={filter.id || `filter-${index}`}
               style={[
                 styles.filterButton,
                 { borderColor },
@@ -285,9 +329,9 @@ const StatusScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         ) : (
-          filteredReports.map((report) => (
+          filteredReports.map((report, index) => (
             <TouchableOpacity
-              key={report.id}
+              key={report.id || `report-${index}`}
               style={[styles.reportCard, { backgroundColor: cardBgColor, borderColor }]}
               onPress={() => handleViewDetails(report)}
             >
@@ -335,7 +379,9 @@ const StatusScreen = ({ navigation }) => {
               <View style={styles.latestUpdate}>
                 <Text style={[styles.updateLabel, { color: textColor }]}>Latest Update:</Text>
                 <Text style={[styles.updateText, { color: textColor }]}>
-                  {report.updates[report.updates.length - 1].message}
+                  {report.updates && report.updates.length > 0 
+                    ? report.updates[report.updates.length - 1].message || 'No message available'
+                    : 'No updates available'}
                 </Text>
               </View>
             </TouchableOpacity>

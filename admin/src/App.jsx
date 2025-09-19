@@ -5,7 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Issues from './pages/Issues';
 import Departments from './pages/Departments';
-import DashboardLayout from './components/Layout/DashboardLayout';
+import DashboardLayout from './components/layout/DashBoardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {

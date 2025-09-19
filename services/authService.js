@@ -1,28 +1,26 @@
-// import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
-const API = "http://localhost:8000/api/v1";
+const API = "http://10.0.2.2:8000/api/v1";
 
-export const saveTokens = async (refreshAccessToken, refreshToken) => {
-    // await AsyncStorage.setItem("accessToken", accessToken);
-    // await AsyncStorage.setItem("refreshToken", refreshToken);
+export const saveTokens = async (accessToken, refreshToken) => {
+    await AsyncStorage.setItem("accessToken", accessToken);
+    await AsyncStorage.setItem("refreshToken", refreshToken);
 };
 
 //Get Tokens
 export const getAccessToken = async () => {
-    // return await AsyncStorage.getItem("accessToken");
-    return null;
+    return await AsyncStorage.getItem("accessToken");
 };
 
 export const getRefreshToken = async () => {
-    // return await AsyncStorage.getItem("refreshToken");
-    return null;
+    return await AsyncStorage.getItem("refreshToken");
 };
 
 //Clear Tokens
 export const clearTokens = async () => {
-    // await AsyncStorage.removeItem("accessToken");
-    // await AsyncStorage.removeItem("refreshToken");
+    await AsyncStorage.removeItem("accessToken");
+    await AsyncStorage.removeItem("refreshToken");
 };
 
 export const refreshTokens = async () => {

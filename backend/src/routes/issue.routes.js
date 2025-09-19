@@ -3,7 +3,10 @@ import {
     generateReport,
     createIssue,
     getMyIssues,
-    getAllIssues
+    getAllIssues,
+    upvoteIssue,
+    addComment,
+    getComments
 } from "../controllers/issue.controller.js"
 import multer from "multer";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
@@ -34,5 +37,12 @@ router.get("/my-reports", verifyJWT, getMyIssues);
 
 // Get all issues (for map view)
 router.get("/all", verifyJWT, getAllIssues);
+
+// Upvote routes
+router.post("/:issueId/upvote", verifyJWT, upvoteIssue);
+
+// Comment routes
+router.post("/:issueId/comments", verifyJWT, addComment);
+router.get("/:issueId/comments", verifyJWT, getComments);
 
 export default router;

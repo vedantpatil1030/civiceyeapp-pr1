@@ -1,5 +1,5 @@
-import axios from 'axios';
 import React, { useState, useEffect } from 'react';
+import api from '../../services/api';
 import {
   View,
   Text,
@@ -17,8 +17,10 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
+import AudioRecorder from '../components/AudioRecorder';
+
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
-import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Geolocation from '@react-native-community/geolocation';
 
@@ -28,7 +30,7 @@ const categories = [
   { id: 'ENVIRONMENT', name: 'Environment', icon: '🌱', color: '#2ed573' },
   { id: 'TRANSPORT', name: 'Transport', icon: '🚗', color: '#ffa502' },
   { id: 'CLEANLINESS', name: 'Cleanliness', icon: '🧹', color: '#3742fa' },
-  { id: 'GOVERNANCE', name: 'Governance', icon: '🏛️', color: '#5f27cd' },
+  { id: 'GOVERNANCE', name: 'Governance', icon: '🏛️', color: '#161120ff' },
   { id: 'OTHER', name: 'Other', icon: '📝', color: '#747d8c' },
 ];
 
@@ -40,7 +42,18 @@ const ReportScreen = ({ navigation }) => {
   const [coordinates, setCoordinates] = useState(null);
   const [selectedImages, setSelectedImages] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [audioFile, setAudioFile] = useState(null);
   const [accessToken, setAccessToken] = useState('');
+
+  // If you need to perform cleanup or initialization, use useEffect properly.
+  // Example placeholder (remove or adjust as needed):
+  // useEffect(() => {
+  //   // Initialization code here
+  //   return () => {
+  //     // Cleanup code here
+  //   };
+  // }, []);
   
   const isDarkMode = useColorScheme() === 'dark';
   
@@ -52,17 +65,90 @@ const ReportScreen = ({ navigation }) => {
   const cardBgColor = isDarkMode ? '#1a1a1a' : '#ffffff';
   const borderColor = isDarkMode ? '#333333' : '#e1e8ed';
 
-  useEffect(() => {
-    const fetchToken = async () => {
+  const checkPermission = async () => {
+    if (Platform.OS === 'android') {
       try {
-        const token = await AsyncStorage.getItem('accessToken');
-        setAccessToken(token || '');
+        const grants = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+        ]);
+
+        const recordAudioGranted =
+          grants['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED;
+        const writeStorageGranted =
+          grants['android.permission.WRITE_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED;
+
+        if (!recordAudioGranted || !writeStorageGranted) {
+          Alert.alert('Permissions Required', 'App needs microphone and storage permissions to record audio.');
+          return false;
+        }
+        return true;
       } catch (err) {
-        setAccessToken('ERROR');
+        console.warn(err);
+        return false;
       }
-    };
-    fetchToken();
-  }, []);
+    }
+    return true;
+  };
+
+  const onStartRecord = async () => {
+    try {
+      const hasPermission = await checkPermission();
+      if (!hasPermission) return;
+
+      // Clean up any existing recording session
+      if (isRecording || recordBackListener.current) {
+        await onStopRecord();
+      }
+
+      const audioPath = Platform.select({
+        ios: 'issue_report.m4a',
+        android: `${Platform.OS === 'android' ? 'sdcard/' : ''}issue_report.mp4`,
+      });
+
+      // Make sure we have a valid recorder instance
+      if (!audioRecorderPlayer.current) {
+        audioRecorderPlayer.current = new AudioRecorderPlayer();
+      }
+
+      await audioRecorderPlayer.current.startRecorder(audioPath);
+      
+      // Store the listener reference so we can remove it later
+      recordBackListener.current = audioRecorderPlayer.current.addRecordBackListener((e) => {
+        setRecordedTime(audioRecorderPlayer.current.mmssss(Math.floor(e.currentPosition)));
+      });
+      
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Recording failed to start:', error);
+      Alert.alert('Error', 'Failed to start recording');
+    }
+  };
+
+  const onStopRecord = async () => {
+    try {
+      if (!audioRecorderPlayer.current) return;
+
+      let result = null;
+      if (isRecording) {
+        result = await audioRecorderPlayer.current.stopRecorder();
+      }
+
+      if (recordBackListener.current) {
+        audioRecorderPlayer.current.removeRecordBackListener();
+        recordBackListener.current = null;
+      }
+
+      setIsRecording(false);
+      if (result) {
+        setAudioFile(result);
+        setDescription('Audio description recorded');
+      }
+    } catch (error) {
+      console.error('Recording failed to stop:', error);
+      Alert.alert('Error', 'Failed to stop recording');
+    }
+  };
 
   // Handle image selection
   const handleImagePicker = () => {
@@ -396,6 +482,17 @@ const ReportScreen = ({ navigation }) => {
         });
       }
 
+      // Audio recording temporarily disabled
+      /*
+      if (audioFile) {
+        formData.append('audio', {
+          uri: audioFile,
+          type: 'audio/mp4',
+          name: 'audio_description.m4a'
+        });
+      }
+      */
+
       // Make request to backend
       // Debug log
       console.log('Submitting with data:', {
@@ -405,20 +502,16 @@ const ReportScreen = ({ navigation }) => {
         address: location.trim(),
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
-        imageCount: selectedImages.length
+        imageCount: selectedImages.length,
+        hasAudioDescription: !!audioFile
       });
 
-      const response = await axios.post(
-        'http://10.0.2.2:8000/api/v1/issues/report',
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          timeout: 10000 // 10 second timeout
-        }
-      );
+      const response = await api.post('/issues/report', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        timeout: 10000 // 10 second timeout
+      });
 
       if (response.data?.data) {
         // Clear form first
@@ -467,7 +560,15 @@ const ReportScreen = ({ navigation }) => {
         errorMessage,
         [
           { 
-            text: 'OK'
+            text: 'OK',
+            onPress: () => {
+              if (error.response?.status === 401) {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' }]
+                });
+              }
+            }
           },
           {
             text: 'Try Again',
@@ -560,12 +661,31 @@ const ReportScreen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
 
-          <Text style={[styles.helpText, { color: textColor }]}>
-            Note: Photos are optional. You can submit your report without images if camera/storage permissions are not available.
-          </Text>
+        <Text style={[styles.helpText, { color: textColor }]}>
+          Note: Photos are optional. You can submit your report without images if camera/storage permissions are not available.
+        </Text>
 
-          {selectedImages.length > 0 && (
-            <ScrollView
+        {/* Audio Recording Section - Temporarily disabled
+        <View collapsable={false} removeClippedSubviews={true}>
+          <AudioRecorder
+            key="audioRecorder"
+            onAudioRecorded={(file) => {
+              setAudioFile(file);
+              setDescription('Audio description recorded');
+            }}
+            onAudioRemoved={() => {
+              setAudioFile(null);
+              if (description === 'Audio description recorded') {
+                setDescription('');
+              }
+            }}
+          />
+        </View>
+        */}
+        </View>
+
+        {selectedImages.length > 0 && (
+          <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.imagePreviewContainer}
@@ -598,7 +718,6 @@ const ReportScreen = ({ navigation }) => {
               <Text style={styles.submitButtonText}>Submit Report</Text>
             )}
           </TouchableOpacity>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );

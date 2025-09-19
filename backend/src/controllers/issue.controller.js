@@ -194,7 +194,7 @@ const upvote = asyncHandler(async(req,res) => {
     return res.json({ message: "Upvote toggled", data: issue });
 });
 
-const addComment = asyncHandler(async (req,res) => {
+const addCommentLegacy = asyncHandler(async (req,res) => {
     const { issueId } = req.params;
     const { text } = req.body;
     if(!text) return res.status(400).json({ message: "Text required" });
@@ -225,6 +225,11 @@ const getAllIssues = asyncHandler(async (req, res) => {
     try {
         const issues = await Issue.find()
             .populate('reportedBy', 'username email')
+            .populate('upvotes', 'username')
+            .populate({
+                path: 'comments.user',
+                select: 'username avatar'
+            })
             .sort({ createdAt: -1 });
 
         return res.status(200).json(
@@ -242,6 +247,12 @@ const getAllIssues = asyncHandler(async (req, res) => {
 const getMyIssues = asyncHandler(async (req, res) => {
     const userId = req.user._id;
     const issues = await Issue.find({ reportedBy: userId })
+        .populate('reportedBy', 'username email')
+        .populate('upvotes', 'username')
+        .populate({
+            path: 'comments.user',
+            select: 'username avatar'
+        })
         .sort({ createdAt: -1 });
     return res.status(200).json(
         new ApiResponse(200, {
@@ -251,13 +262,108 @@ const getMyIssues = asyncHandler(async (req, res) => {
     );
 });
 
+// Upvote an issue
+const upvoteIssue = asyncHandler(async (req, res) => {
+    const { issueId } = req.params;
+    const userId = req.user._id;
+
+    if (!issueId) {
+        throw new ApiError(400, "Issue ID is required");
+    }
+
+    const issue = await Issue.findById(issueId);
+    if (!issue) {
+        throw new ApiError(404, "Issue not found");
+    }
+
+    // Check if user has already upvoted
+    const hasUpvoted = issue.upvotes.some(id => id.equals(userId));
+
+    if (hasUpvoted) {
+        // Remove upvote
+        issue.upvotes = issue.upvotes.filter(id => !id.equals(userId));
+    } else {
+        // Add upvote
+        issue.upvotes.push(userId);
+    }
+
+    await issue.save();
+
+    return res.status(200).json(
+        new ApiResponse(200, { upvoted: !hasUpvoted, upvoteCount: issue.upvotes.length }, 
+            hasUpvoted ? "Upvote removed successfully" : "Upvoted successfully")
+    );
+});
+
+// Add a comment to an issue
+const addComment = asyncHandler(async (req, res) => {
+    const { issueId } = req.params;
+    const { text } = req.body;
+    const userId = req.user._id;
+
+    if (!issueId || !text?.trim()) {
+        throw new ApiError(400, "Issue ID and comment text are required");
+    }
+
+    const issue = await Issue.findById(issueId);
+    if (!issue) {
+        throw new ApiError(404, "Issue not found");
+    }
+
+    issue.comments.push({
+        user: userId,
+        text: text.trim()
+    });
+
+    await issue.save();
+
+    // Populate the newly added comment with user details
+    const populatedIssue = await Issue.findById(issueId)
+        .populate({
+            path: 'comments.user',
+            select: 'name avatar'
+        });
+
+    const newComment = populatedIssue.comments[populatedIssue.comments.length - 1];
+
+    return res.status(201).json(
+        new ApiResponse(201, { comment: newComment }, "Comment added successfully")
+    );
+});
+
+// Get all comments for an issue
+const getComments = asyncHandler(async (req, res) => {
+    const { issueId } = req.params;
+    
+    if (!issueId) {
+        throw new ApiError(400, "Issue ID is required");
+    }
+
+    const issue = await Issue.findById(issueId)
+        .populate({
+            path: 'comments.user',
+            select: 'name avatar'
+        })
+        .select('comments');
+
+    if (!issue) {
+        throw new ApiError(404, "Issue not found");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, { comments: issue.comments }, "Comments retrieved successfully")
+    );
+});
+
 export {
     createIssue,
     adminAssign,
     staffUploadProof,
     changeStatus,
-    upvote,
-    addComment,
+    upvoteIssue,
+    addComment, // new version
+    addCommentLegacy, // legacy version, if still needed elsewhere
+    getComments,
     nearbyIssues,
     generateReport,
     getMyIssues,

@@ -2,7 +2,7 @@ import axios from "axios";
 import { getAccessToken, refreshTokens } from "./authService";
 
 const api = axios.create({
-    baseURL : "http://localhost:8000/api/v1",
+    baseURL : "http://10.0.2.2:8000/api/v1",
 });
 
 //Attach Token before request
