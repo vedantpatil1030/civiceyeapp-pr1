@@ -1,10 +1,26 @@
 import { Router } from "express";
 import {
     generateReport,
-    createIssue
+    createIssue,
+    adminAssign,
+    changeStatus,
+    upvote,
+    addComment,
+    nearbyIssues,
+    staffUploadProof,
+    getAllIssues,
+    getIssueById,
+    reassignDept,
+    getIssueProgress,
+    getDeptIssues,
+    getIssueStaff,
+    assignStaff,
+    verifyIssue,
+    raiseDeptComplaint
 } from "../controllers/issue.controller.js"
 import multer from "multer";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { verifyJWT, authorizeRoles } from "../middlewares/auth.middleware.js";
+// import { verify } from "jsonwebtoken";
 
 const upload = multer({ dest: "uploads/"});
 
@@ -22,6 +38,46 @@ router.route("/report").post(
 
 //For the generation of report
 router.route("/:issueId/report").get(generateReport);
+
+// Admin assigns issue
+router.route("/:issueId/assign").post(verifyJWT,
+    authorizeRoles("MUNICIPAL_ADMIN"),
+    adminAssign
+);
+    
+//Staff Upload Proof
+router.route("/:issueId/proof").post(verifyJWT,
+    authorizeRoles("STAFF"),
+    upload.single("file"),
+    staffUploadProof
+)
+
+//Change Status
+router.route("/:issueId/status").post(
+    verifyJWT, 
+    authorizeRoles("SUPER_ADMIN","ADMIN","DEPT_ADMIN","STAFF"),
+    changeStatus
+);
+
+//Upvote 
+router.route("/:issueId/upvote").post(
+    verifyJWT, 
+    authorizeRoles("CITIZEN"), 
+    upvote
+);
+
+//Add Comment
+router.route("/:issueId/comment").post(
+    verifyJWT,
+    addComment
+);
+
+//To get the nearby issues
+router.route("/nearby").post(
+    verifyJWT,
+    nearbyIssues
+);
+
 
 
 export default router;
