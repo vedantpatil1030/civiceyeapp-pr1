@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
 import {
   StyleSheet,
   View,
@@ -12,190 +14,88 @@ import {
 } from 'react-native';
 import { LeafletView } from 'react-native-leaflet-view';
 import AccountIcon from '../components/AccountIcon';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Enhanced sample civic issues data across major Indian citiesrr
-const sampleIssues = [
-  {
-    id: 1,
-    title: "Broken Street Light",
-    description: "Street light not working for 2 weeks causing safety issues for pedestrians and vehicles during night hours. Multiple accidents reported.",
-    location: "Connaught Place, New Delhi",
-    address: "Block A, Connaught Place, Central Delhi, Delhi 110001",
-    latitude: 28.6315,
-    longitude: 77.2167,
-    status: "open",
-    category: "infrastructure",
-    priority: "high",
-    date: "2024-01-15",
-    reportedBy: "Delhi Municipal Corporation",
-    estimatedCost: "₹15,000",
-    expectedResolution: "7 days"
-  },
-  {
-    id: 2,
-    title: "Pothole on Main Road", 
-    description: "Large pothole causing traffic issues and vehicle damage. Approximately 2 feet wide and 6 inches deep, affecting traffic flow significantly.",
-    location: "Bandra West, Mumbai",
-    address: "SV Road, Bandra West, Mumbai, Maharashtra 400050",
-    latitude: 19.0596,
-    longitude: 72.8295,
-    status: "in-progress",
-    category: "infrastructure",
-    priority: "medium", 
-    date: "2024-01-12",
-    reportedBy: "Brihanmumbai Municipal Corporation",
-    estimatedCost: "₹25,000",
-    expectedResolution: "10 days"
-  },
-  {
-    id: 3,
-    title: "Garbage Collection Issue",
-    description: "Garbage not collected for 3 days, creating unhygienic conditions and foul smell. Attracting stray animals and insects.",
-    location: "Koramangala, Bangalore",
-    address: "5th Block, Koramangala, Bengaluru, Karnataka 560095",
-    latitude: 12.9279,
-    longitude: 77.6271,
-    status: "resolved",
-    category: "cleanliness",
-    priority: "medium",
-    date: "2024-01-10",
-    reportedBy: "Bruhat Bengaluru Mahanagara Palike",
-    estimatedCost: "₹5,000",
-    expectedResolution: "Completed"
-  },
-  {
-    id: 4,
-    title: "Traffic Signal Malfunction",
-    description: "Traffic light stuck on red causing major traffic jams during peak hours. Electronic control system needs immediate repair.",
-    location: "Anna Salai, Chennai",
-    address: "Anna Salai, Thousand Lights, Chennai, Tamil Nadu 600002",
-    latitude: 13.0675,
-    longitude: 80.2372,
-    status: "open",
-    category: "infrastructure", 
-    priority: "high",
-    date: "2024-01-14",
-    reportedBy: "Greater Chennai Corporation",
-    estimatedCost: "₹50,000",
-    expectedResolution: "5 days"
-  },
-  {
-    id: 5,
-    title: "Illegal Parking Issue",
-    description: "Vehicles parked on footpath blocking pedestrian access and creating safety hazards for disabled individuals.",
-    location: "Park Street, Kolkata",
-    address: "Park Street, Kolkata, West Bengal 700016",
-    latitude: 22.5542,
-    longitude: 88.3517,
-    status: "in-progress",
-    category: "safety",
-    priority: "medium",
-    date: "2024-01-13",
-    reportedBy: "Kolkata Municipal Corporation",
-    estimatedCost: "₹10,000",
-    expectedResolution: "14 days"
-  },
-  {
-    id: 6,
-    title: "Water Pipeline Leak",
-    description: "Major water pipeline burst causing water wastage and road damage. Affecting water supply to nearby residential areas.",
-    location: "Jubilee Hills, Hyderabad",
-    address: "Road No. 36, Jubilee Hills, Hyderabad, Telangana 500033",
-    latitude: 17.4326,
-    longitude: 78.4071,
-    status: "open",
-    category: "infrastructure",
-    priority: "high",
-    date: "2024-01-16",
-    reportedBy: "Greater Hyderabad Municipal Corporation",
-    estimatedCost: "₹75,000",
-    expectedResolution: "3 days"
-  },
-  {
-    id: 7,
-    title: "Park Maintenance Required",
-    description: "Public park in poor condition with broken benches, overgrown vegetation, and non-functional playground equipment.",
-    location: "Fateh Maidan, Hyderabad",
-    address: "Fateh Maidan, Basheerbagh, Hyderabad, Telangana 500004",
-    latitude: 17.4065,
-    longitude: 78.4772,
-    status: "open",
-    category: "environment",
-    priority: "low",
-    date: "2024-01-11",
-    reportedBy: "Parks and Recreation Department",
-    estimatedCost: "₹1,20,000",
-    expectedResolution: "30 days"
-  },
-  {
-    id: 8,
-    title: "Noise Pollution from Construction",
-    description: "Excessive noise from construction site violating permitted hours and disturbing residents and nearby school.",
-    location: "Sector 18, Noida",
-    address: "Sector 18, Noida, Uttar Pradesh 201301",
-    latitude: 28.5706,
-    longitude: 77.3272,
-    status: "in-progress",
-    category: "environment",
-    priority: "medium",
-    date: "2024-01-09",
-    reportedBy: "Noida Authority",
-    estimatedCost: "₹0",
-    expectedResolution: "7 days"
-  },
-  {
-    id: 9,
-    title: "Bus Stop Shelter Damaged",
-    description: "Bus shelter roof collapsed due to heavy winds. Commuters exposed to weather conditions.",
-    location: "MG Road, Pune",
-    address: "Mahatma Gandhi Road, Camp, Pune, Maharashtra 411001",
-    latitude: 18.5158,
-    longitude: 73.8567,
-    status: "open",
-    category: "transport",
-    priority: "medium",
-    date: "2024-01-17",
-    reportedBy: "Pune Municipal Corporation",
-    estimatedCost: "₹40,000",
-    expectedResolution: "15 days"
-  },
-  {
-    id: 10,
-    title: "Stray Dog Menace",
-    description: "Increasing number of aggressive stray dogs in residential area posing threat to children and elderly residents.",
-    location: "Velachery, Chennai",
-    address: "Velachery Main Road, Chennai, Tamil Nadu 600042",
-    latitude: 12.9759,
-    longitude: 80.2336,
-    status: "open",
-    category: "safety",
-    priority: "high",
-    date: "2024-01-18",
-    reportedBy: "Animal Welfare Board",
-    estimatedCost: "₹30,000",
-    expectedResolution: "21 days"
-  }
-];
+
+
 
 const MapScreen = ({ navigation }) => {
     // Use the same working Delhi coordinates
     const markerPosition = { lat: 28.6139, lng: 77.2090 };
     const mapZoom = 6;
-    
+
     const [selectedFilter, setSelectedFilter] = useState('all');
     const [selectedIssue, setSelectedIssue] = useState(null);
     const [modalVisible, setModalVisible] = useState(false);
+    const [issues, setIssues] = useState([]);
+    const [loading, setLoading] = useState(false);
 
     const isDarkMode = useColorScheme() === 'dark';
     const { width, height } = Dimensions.get('window');
-    
+
     const backgroundStyle = {
         backgroundColor: isDarkMode ? '#000000' : '#ffffff',
     };
-    
+
     const textColor = isDarkMode ? '#ffffff' : '#000000';
     const borderColor = isDarkMode ? '#333333' : '#dddddd';
     const cardBgColor = isDarkMode ? '#1e1e1e' : '#ffffff';
+
+    // Loading component
+    const LoadingOverlay = () => (
+        <View style={[styles.loadingOverlay, { backgroundColor: cardBgColor }]}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={[styles.loadingText, { color: textColor }]}>Loading issues...</Text>
+        </View>
+    );
+
+    // Fetch all issues from backend
+    useEffect(() => {
+        const fetchIssues = async () => {
+            setLoading(true);
+            try {
+                const token = await AsyncStorage.getItem('accessToken');
+                if (!token) {
+                    Alert.alert('Error', 'Please login to view issues');
+                    setLoading(false);
+                    return;
+                }
+                
+                const res = await axios.get('http://10.0.2.2:8000/api/v1/issues/all', {
+                    headers: { 
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = res.data?.data?.issues || [];
+                if (!Array.isArray(data)) {
+                    console.error('Invalid data format received:', res.data);
+                    throw new Error('Invalid data format received from server');
+                }
+                setIssues(data);
+            } catch (err) {
+                console.error('Error fetching issues:', err?.response?.data || err);
+                Alert.alert('Error', 'Failed to load issues. Please try again.');
+                setIssues([]);
+            }
+            setLoading(false);
+        };
+        fetchIssues();
+
+        // Refresh data every 30 seconds
+        const interval = setInterval(fetchIssues, 30000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Filter issues based on selected filter
+    const filteredIssues = Array.isArray(issues) ? (
+        selectedFilter === 'all'
+            ? issues
+            : issues.filter(issue => {
+                const category = (issue.type || issue.category || '').toLowerCase();
+                return category === selectedFilter.toLowerCase();
+              })
+    ) : [];
 
     // Filter options
     const filters = [
@@ -206,11 +106,6 @@ const MapScreen = ({ navigation }) => {
         { id: 'cleanliness', name: 'Cleanliness', icon: '🧹', color: '#9c27b0' },
         { id: 'transport', name: 'Transport', icon: '🚗', color: '#607d8b' },
     ];
-
-    // Filter issues based on selected filter
-    const filteredIssues = selectedFilter === 'all' 
-        ? sampleIssues 
-        : sampleIssues.filter(issue => issue.category === selectedFilter);
 
     // Get category icon - moved before mapMarkers creation
     const getCategoryIcon = (category) => {
@@ -224,31 +119,45 @@ const MapScreen = ({ navigation }) => {
         return icons[category] || '📝';
     };
 
+    // Format date helper function
+    const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    };
+
     // Create detailed pin-style markers
     const mapMarkers = filteredIssues.map(issue => {
         let pinColor = '#ff4757'; // Default red for open
         let statusIcon = '⚠️';
-        
-        if (issue.status === 'in-progress') {
+        const status = (issue.status || '').toLowerCase();
+        if (status === 'in_progress' || status === 'in-progress') {
             pinColor = '#ffa502'; // Orange
-            statusIcon = '�';
+            statusIcon = '⏳';
         }
-        if (issue.status === 'resolved') {
+        if (status === 'resolved' || status === 'completed' || status === 'closed') {
             pinColor = '#2ed573'; // Green  
             statusIcon = '✅';
         }
-
+        
+        // Enhanced priority visualization
         let priorityRing = '';
+        let priorityIcon = '⚡';
         if (issue.priority === 'high') {
             priorityRing = '3px solid #ff0000';
+            priorityIcon = '⚡⚡⚡';
         } else if (issue.priority === 'medium') {
             priorityRing = '2px solid #ffa500';
         } else {
             priorityRing = '1px solid #888888';
         }
-        
         return {
-            position: { lat: issue.latitude, lng: issue.longitude },
+            position: issue.location?.coordinates ? 
+                { lat: issue.location.coordinates[1], lng: issue.location.coordinates[0] } :
+                { lat: 28.6139, lng: 77.2090 }, // Default to Delhi if no coordinates
             icon: `
                 <div style="
                     position: relative;
@@ -272,7 +181,6 @@ const MapScreen = ({ navigation }) => {
                         border-radius: 50%;
                         filter: blur(1px);
                     "></div>
-                    
                     <!-- Pin Body -->
                     <div style="
                         position: absolute;
@@ -287,7 +195,6 @@ const MapScreen = ({ navigation }) => {
                         border: ${priorityRing};
                         box-shadow: 0 3px 6px rgba(0,0,0,0.3);
                     "></div>
-                    
                     <!-- Pin Icon -->
                     <div style="
                         position: absolute;
@@ -322,7 +229,7 @@ const MapScreen = ({ navigation }) => {
                 </div>
             `,
             size: [40, 50],
-            id: issue.id.toString()
+            id: issue._id ? issue._id.toString() : String(Math.random())
         };
     });
 
@@ -334,8 +241,13 @@ const MapScreen = ({ navigation }) => {
             // LeafletView sends message directly, not in nativeEvent.data
             let data;
             if (message.nativeEvent && message.nativeEvent.data) {
-                // Try parsing as string first
-                data = JSON.parse(message.nativeEvent.data);
+                try {
+                    // Try parsing as string first
+                    data = JSON.parse(message.nativeEvent.data);
+                } catch (e) {
+                    console.log('Error parsing message data:', e);
+                    data = message.nativeEvent.data;
+                }
             } else if (typeof message === 'object' && message.event) {
                 // Message is already an object
                 data = message;
@@ -351,17 +263,11 @@ const MapScreen = ({ navigation }) => {
                 const markerId = data.payload?.mapMarkerID;
                 console.log('Marker clicked with ID:', markerId);
                 
-                const issue = sampleIssues.find(issue => issue.id.toString() === markerId);
+                const issue = filteredIssues.find(issue => issue.id.toString() === markerId);
                 if (issue) {
                     console.log('Found issue:', issue.title);
-                    console.log('Setting modal visible to true');
                     setSelectedIssue(issue);
                     setModalVisible(true);
-                    
-                    // Add a small delay to ensure state is updated
-                    setTimeout(() => {
-                        console.log('Modal should now be visible');
-                    }, 100);
                 } else {
                     console.log('No issue found for marker ID:', markerId);
                 }
@@ -463,29 +369,33 @@ const MapScreen = ({ navigation }) => {
                 </ScrollView>
             </View>
 
-            {/* Map - Simple configuration without injected JavaScript */}
-            <View style={styles.mapContainer}>
-                <LeafletView
-                    mapCenterPosition={markerPosition}
-                    zoom={mapZoom}
-                    onMessageReceived={handleMessage}
-                    mapMarkers={mapMarkers}
-                    renderLoading={() => (
-                        <View style={styles.loadingContainer}>
-                            <Text style={[styles.loadingText, { color: textColor }]}>Loading map...</Text>
-                        </View>
-                    )}
-                    onError={(error) => {
-                        console.log('LeafletView Error:', error);
-                    }}
-                    onLoadEnd={() => {
-                        console.log('Map loaded successfully');
-                    }}
-                    onLoadStart={() => {
-                        console.log('Map loading started');
-                    }}
-                />
-            </View>
+            {/* Map Component */}
+            {loading ? (
+                <View style={styles.mapContainer}>
+                    <View style={styles.loadingContainer}>
+                        <Text style={[styles.loadingText, { color: textColor }]}>Loading map...</Text>
+                    </View>
+                </View>
+            ) : (
+                <View style={styles.mapContainer} key="map-container">
+                    <LeafletView
+                        key="leaflet-view"
+                        mapCenterPosition={markerPosition}
+                        zoom={mapZoom}
+                        onMessageReceived={handleMessage}
+                        mapMarkers={mapMarkers}
+                        onError={(error) => {
+                            console.log('LeafletView Error:', error);
+                        }}
+                        onLoadEnd={() => {
+                            console.log('Map loaded successfully');
+                        }}
+                        onLoadStart={() => {
+                            console.log('Map loading started');
+                        }}
+                    />
+                </View>
+            )}
 
             {/* Enhanced Statistics */}
             <View style={styles.statisticsSection}>
@@ -512,7 +422,7 @@ const MapScreen = ({ navigation }) => {
                 <View style={styles.additionalStats}>
                     <View style={styles.statRow}>
                         <Text style={[styles.statRowLabel, { color: textColor }]}>📈 Total Issues:</Text>
-                        <Text style={[styles.statRowValue, { color: textColor }]}>{sampleIssues.length}</Text>
+                        <Text style={[styles.statRowValue, { color: textColor }]}>{issues.length}</Text>
                     </View>
                     <View style={styles.statRow}>
                         <Text style={[styles.statRowLabel, { color: textColor }]}>🔍 Currently Viewing:</Text>
@@ -521,7 +431,7 @@ const MapScreen = ({ navigation }) => {
                     <View style={styles.statRow}>
                         <Text style={[styles.statRowLabel, { color: textColor }]}>🏙️ Cities Covered:</Text>
                         <Text style={[styles.statRowValue, { color: textColor }]}>
-                            {[...new Set(sampleIssues.map(issue => issue.location.split(',')[1]?.trim()))].length}
+                            {[...new Set(issues.map(issue => (issue.location && typeof issue.location === 'string') ? issue.location.split(',')[1]?.trim() : ''))].filter(Boolean).length}
                         </Text>
                     </View>
                     <View style={styles.statRow}>
@@ -661,6 +571,27 @@ const MapScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    },
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+        opacity: 0.9,
+    },
+    loadingText: {
+        marginTop: 10,
+        fontSize: 16,
+    },
     container: {
         flex: 1,
     },

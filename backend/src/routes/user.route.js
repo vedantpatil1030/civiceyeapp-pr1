@@ -1,4 +1,5 @@
 import { Router } from "express";
+
 import { 
     loginUser,
     registerUser,
@@ -9,13 +10,18 @@ import {
     updateProfile,
     updateAvatar,
     createDepartmentAdmin,
-    createStaff
+    createStaff,
+    getMe
 } from "../controllers/user.controller.js";
 
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
+
 const router = Router();
+
+// Get current user profile (for persistent login)
+router.route("/me").get(verifyJWT, getMe);
 
 
 router.route("/register").post(

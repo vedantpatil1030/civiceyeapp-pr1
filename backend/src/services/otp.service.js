@@ -9,12 +9,25 @@ const sendOtp = asyncHandler(async (req, res) => {
 
     const url = `https://cpaas.messagecentral.com/verification/v3/send?countryCode=91&customerId=${process.env.CUSTOMER_ID}&flowType=SMS&mobileNumber=${mobileNumber}`;
 
-    const response = await axios.post(url, {}, {
-        headers: {
-            authToken: process.env.MESSAGECENTRAL_AUTH
+    try {
+        const response = await axios.post(url, {}, {
+            headers: {
+                authToken: process.env.MESSAGECENTRAL_AUTH
+            }
+        });
+        return res.json(response.data);
+    } catch (error) {
+        console.error('OTP send error:', error?.response?.data || error.message || error);
+        // Forward the error message from the external API if available
+        if (error.response && error.response.data) {
+            return res.status(400).json({
+                success: false,
+                message: error.response.data.message || 'Failed to send OTP',
+                details: error.response.data
+            });
         }
-    });
-    return res.json(response.data);
+        throw new ApiError(400, error.message || 'Failed to send OTP');
+    }
 });
 
 const verifyOtp = asyncHandler(async (req,res) => {

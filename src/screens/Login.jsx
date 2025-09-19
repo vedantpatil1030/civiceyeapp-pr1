@@ -10,7 +10,7 @@ import {
   useColorScheme 
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
-// import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 const LoginScreen = () => {
@@ -90,8 +90,8 @@ const LoginScreen = () => {
         Alert.alert('Error', 'Failed to send OTP. Please try again.');
       }
     } catch (error) {
-      console.error('❌ OTP send error:', error);
-      Alert.alert('Error', error.response?.data?.message || 'Failed to send OTP');
+      console.error('❌ OTP send error:', error, error.response?.data);
+      Alert.alert('Error', error.response?.data?.message || error.message || 'Failed to send OTP');
     }
   };
 
@@ -126,15 +126,16 @@ const LoginScreen = () => {
         if (loginResponse.data.statusCode === 200) {
           const { user, accessToken, refreshToken } = loginResponse.data.data;
           
-          // Store tokens and user data
-          // await AsyncStorage.setItem('accessToken', accessToken);
-          // await AsyncStorage.setItem('refreshToken', refreshToken);
-          // await AsyncStorage.setItem('user', JSON.stringify(user));
+          // Store tokens and minimal user data for persistent login
+          await AsyncStorage.setItem('accessToken', accessToken);
+          await AsyncStorage.setItem('refreshToken', refreshToken);
+          const minimalUser = { _id: user._id, fullName: user.fullName, role: user.role };
+          await AsyncStorage.setItem('user', JSON.stringify(minimalUser));
 
           Alert.alert('Login Successful', 'Welcome back!', [
             { text: 'OK', onPress: () => navigation.reset({
                 index: 0,
-                routes: [{ name: 'Map' }],
+                routes: [{ name: 'MainTabs', state: { index: 0, routes: [{ name: 'Report' }] } }],
               }) 
             }
           ]);

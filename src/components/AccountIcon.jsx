@@ -2,13 +2,14 @@ import React from 'react';
 import { TouchableOpacity, StyleSheet, useColorScheme, Text } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
-const AccountIcon = ({ style }) => {
-  const navigation = useNavigation();
+const AccountIcon = ({ style, navigation }) => {
+  // Accept navigation as prop for headerRight, fallback to useNavigation
+  const nav = navigation || useNavigation();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   const navigateToAccount = () => {
-    navigation.navigate('Account');
+    nav.navigate('Account');
   };
 
   return (
