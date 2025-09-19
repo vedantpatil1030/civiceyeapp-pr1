@@ -245,6 +245,36 @@ const nearbyIssues = asyncHandler(async (req, res) => {
 
   return res.json({ data: issues });
 });
+// Get all issues for map view
+// const getAllIssues = asyncHandler(async (req, res) => {
+//     try {
+//         const issues = await Issue.find()
+//             .populate('reportedBy', 'username email')
+//             .sort({ createdAt: -1 });
+
+//         return res.status(200).json(
+//             new ApiResponse(200, {
+//                 issues,
+//                 count: issues.length
+//             }, "Issues fetched successfully")
+//         );
+//     } catch (error) {
+//         throw new ApiError(500, "Error fetching issues: " + error.message);
+//     }
+// });
+
+// Get all issues reported by the logged-in user
+const getMyIssues = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const issues = await Issue.find({ reportedBy: userId })
+        .sort({ createdAt: -1 });
+    return res.status(200).json(
+        new ApiResponse(200, {
+            issues,
+            count: issues.length
+        }, "User issues fetched successfully")
+    );
+});
 
 //TO get all issues 
 //GET
@@ -445,5 +475,7 @@ export {
     getIssueStaff,
     assignStaff,
     verifyIssue,
-    raiseDeptComplaint
+    raiseDeptComplaint,
+    getMyIssues,
 };
+

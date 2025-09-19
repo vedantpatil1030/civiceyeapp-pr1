@@ -1,4 +1,5 @@
 import { Router } from "express";
+
 import { 
     loginUser,
     registerUser,
@@ -6,14 +7,21 @@ import {
     checkLoginUser,
     checkRegisterUser,
     logoutUser,
+    updateProfile,
+    updateAvatar,
     createDepartmentAdmin,
-    createStaff
+    createStaff,
+    getMe
 } from "../controllers/user.controller.js";
 
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
+
 const router = Router();
+
+// Get current user profile (for persistent login)
+router.route("/me").get(verifyJWT, getMe);
 
 
 router.route("/register").post(
@@ -33,6 +41,8 @@ router.route("/login").post(loginUser)
 //Secured routes
 router.route("/logout").post(verifyJWT, logoutUser)
 router.route("/refresh-token").post(refreshAccessToken)
+router.route("/update-profile").put(verifyJWT, updateProfile)
+router.route("/update-avatar").put(verifyJWT, upload.single("avatar"), updateAvatar)
 
 export default router
 

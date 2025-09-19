@@ -1,3 +1,16 @@
+// Get current user profile (for persistent login)
+const getMe = asyncHandler(async (req, res) => {
+    // req.user is set by verifyJWT middleware
+    if (!req.user) {
+        throw new ApiError(401, "Not authenticated");
+    }
+    // Always fetch the latest user profile from DB to ensure all fields are present
+    const user = await User.findById(req.user._id).select("-password -refreshToken");
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+    return res.status(200).json(new ApiResponse(200, user, "User profile fetched successfully"));
+});
 import {asyncHandler} from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
@@ -20,6 +33,7 @@ const generateAccessAndRefreshTokens = async(userId) => {
         throw new ApiError(500, "Something went wrong while generating referesh and access token")
     }
 }
+ 
 
 //Register Citizen
 const registerUser = asyncHandler( async (req,res) => {
@@ -131,7 +145,7 @@ const checkLoginUser = asyncHandler(async (req,res) => {
     const { mobileNumber } = req.body;
     const user = await User.findOne({ mobileNumber });
     if (!user) throw new ApiError(404, "user not found, please register");
-    return res.jsosn(new ApiResponse(200,null,"User exists, proceed with login"));
+    return res.json(new ApiResponse(200,null,"User exists, proceed with login"));
 });
 
 const loginUser = asyncHandler(async (req,res) => {
@@ -174,6 +188,71 @@ const refreshAccessToken = asyncHandler(async (req,res) => {
     });
 });
 
+const updateProfile = asyncHandler(async (req, res) => {
+    const { fullName, email } = req.body;
+    const userId = req.user._id;
+
+    console.log("🔄 Updating profile for user:", userId);
+    console.log("📝 Update data:", { fullName, email });
+
+    if (!fullName && !email) {
+        throw new ApiError(400, "At least one field is required to update");
+    }
+
+    const updateData = {};
+    if (fullName) updateData.fullName = fullName;
+    if (email) {
+        // Check if email already exists for another user
+        const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+        if (existingUser) {
+            throw new ApiError(409, "Email already exists");
+        }
+        updateData.email = email;
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $set: updateData },
+        { new: true, runValidators: true }
+    ).select("-password -refreshToken");
+
+    if (!updatedUser) {
+        throw new ApiError(404, "User not found");
+    }
+
+    console.log("✅ Profile updated successfully:", updatedUser._id);
+
+    return res.status(200).json(
+        new ApiResponse(200, updatedUser, "Profile updated successfully")
+    );
+});
+
+const updateAvatar = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    console.log("📷 Updating avatar for user:", userId);
+    if (!req.file) {
+        console.error("No file received in request for avatar upload.", req.body, req.files, req.file);
+        throw new ApiError(400, "Avatar file is required");
+    }
+    console.log("Received file:", req.file);
+    const uploadResponse = await uploadOnCloudinary(req.file.path);
+    if (!uploadResponse) {
+        throw new ApiError(500, "Failed to upload avatar");
+    }
+    const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $set: { avatar: uploadResponse.secure_url } },
+        { new: true }
+    ).select("-password -refreshToken");
+    if (!updatedUser) {
+        throw new ApiError(404, "User not found");
+    }
+    console.log("✅ Avatar updated successfully:", uploadResponse.secure_url);
+    return res.status(200).json(
+        new ApiResponse(200, updatedUser, "Avatar updated successfully")
+    );
+});
+
 export {
     registerUser,
     loginUser,
@@ -181,6 +260,9 @@ export {
     refreshAccessToken,
     checkLoginUser,
     checkRegisterUser,
+    updateProfile,
+    updateAvatar,
     createStaff,
-    createDepartmentAdmin
+    createDepartmentAdmin,
+    getMe,
 }

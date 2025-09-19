@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import axios from 'axios';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,6 +19,8 @@ import {
 } from 'react-native';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Geolocation from '@react-native-community/geolocation';
 
 const categories = [
   { id: 'INFRASTRUCTURE', name: 'Infrastructure', icon: '🏗️', color: '#ff4757' },
@@ -37,6 +40,7 @@ const ReportScreen = ({ navigation }) => {
   const [coordinates, setCoordinates] = useState(null);
   const [selectedImages, setSelectedImages] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [accessToken, setAccessToken] = useState('');
   
   const isDarkMode = useColorScheme() === 'dark';
   
@@ -47,6 +51,18 @@ const ReportScreen = ({ navigation }) => {
   const textColor = isDarkMode ? '#ffffff' : '#000000';
   const cardBgColor = isDarkMode ? '#1a1a1a' : '#ffffff';
   const borderColor = isDarkMode ? '#333333' : '#e1e8ed';
+
+  useEffect(() => {
+    const fetchToken = async () => {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        setAccessToken(token || '');
+      } catch (err) {
+        setAccessToken('ERROR');
+      }
+    };
+    fetchToken();
+  }, []);
 
   // Handle image selection
   const handleImagePicker = () => {
@@ -143,12 +159,7 @@ const ReportScreen = ({ navigation }) => {
       }
 
       if (response.assets && response.assets[0]) {
-        const newImage = {
-          uri: response.assets[0].uri,
-          type: response.assets[0].type || 'image/jpeg',
-          fileName: response.assets[0].fileName || `photo_${Date.now()}.jpg`,
-        };
-        setSelectedImages([...selectedImages, newImage]);
+        setSelectedImages([...selectedImages, response.assets[0]]);
         Alert.alert('Success', 'Photo has been added to your report');
       }
     });
@@ -238,14 +249,8 @@ const ReportScreen = ({ navigation }) => {
       }
 
       if (response.assets) {
-        const newImages = response.assets.map(asset => ({
-          uri: asset.uri,
-          type: asset.type || 'image/jpeg',
-          fileName: asset.fileName || `image_${Date.now()}.jpg`,
-        }));
-        
-        setSelectedImages([...selectedImages, ...newImages]);
-        Alert.alert('Success', `${newImages.length} photo(s) added to your report`);
+        setSelectedImages([...selectedImages, ...response.assets]);
+        Alert.alert('Success', `${response.assets.length} photo(s) added to your report`);
       }
     });
   };
@@ -291,34 +296,62 @@ const ReportScreen = ({ navigation }) => {
       }
     }
 
-    // Use React Native's built-in Geolocation (requires @react-native-community/geolocation or similar)
-    // For now, we'll use a simple manual location input
-    Alert.alert(
-      'Location Options',
-      'Choose how to add your location',
-      [
-        {
-          text: 'Enter Manually',
-          onPress: () => {
-            Alert.alert('Manual Entry', 'Please use the text field below to enter your location manually.');
-          }
+    // Use Geolocation to get current position
+    try {
+      Geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCoordinates({ latitude, longitude });
+          setLocation(`GPS: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+          
+          // Optionally: Use reverse geocoding to get address
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.display_name) {
+                setLocation(data.display_name);
+              }
+            })
+            .catch(err => {
+              console.warn('Reverse geocoding failed:', err);
+              // Keep the coordinates-only location as fallback
+            });
         },
-        {
-          text: 'Use Sample Location',
-          onPress: () => {
-            const sampleLat = 12.9716;
-            const sampleLng = 77.5946;
-            setCoordinates({ lat: sampleLat, lng: sampleLng });
-            setLocation(`GPS: ${sampleLat.toFixed(6)}, ${sampleLng.toFixed(6)} (Bangalore - Sample)`);
-            Alert.alert('Success', 'Sample location has been added to your report');
-          }
+        (error) => {
+          console.warn('GPS Error:', error);
+          Alert.alert(
+            'Location Error',
+            'Could not get your current location. Would you like to:',
+            [
+              {
+                text: 'Enter Manually',
+                onPress: () => {
+                  Alert.alert('Manual Entry', 'Please use the text field below to enter your location manually.');
+                }
+              },
+              {
+                text: 'Use Sample Location',
+                onPress: () => {
+                  const sampleLat = 12.9716;
+                  const sampleLng = 77.5946;
+                  setCoordinates({ latitude: sampleLat, longitude: sampleLng });
+                  setLocation(`GPS: ${sampleLat.toFixed(6)}, ${sampleLng.toFixed(6)} (Bangalore - Sample)`);
+                  Alert.alert('Success', 'Sample location has been added to your report');
+                }
+              },
+              {
+                text: 'Cancel',
+                style: 'cancel'
+              }
+            ]
+          );
         },
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        }
-      ]
-    );
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    } catch (error) {
+      console.error('Geolocation error:', error);
+      Alert.alert('Error', 'Failed to get location. Please enter your location manually.');
+    }
   };
 
   const handleSubmit = async () => {
@@ -326,30 +359,123 @@ const ReportScreen = ({ navigation }) => {
       Alert.alert('Missing Information', 'Please fill in title, description, and category.');
       return;
     }
-
     if (!location.trim()) {
       Alert.alert('Location Required', 'Please add your location before submitting.');
       return;
     }
+    if (!coordinates?.latitude || !coordinates?.longitude) {
+      Alert.alert('Location Error', 'Please ensure your location includes GPS coordinates.');
+      return;
+    }
+    if (!accessToken) {
+      Alert.alert('Authentication Error', 'Please log in to submit a report.');
+      return;
+    }
 
     setIsSubmitting(true);
-
     try {
-      // Here you would typically send the data to your backend
-      // For now, we'll just simulate a successful submission
-      setTimeout(() => {
-        Alert.alert('Success', 'Your report has been submitted successfully!');
+      // Create form data for multipart upload
+      const formData = new FormData();
+      
+      // Add text fields
+      formData.append('title', title.trim());
+      formData.append('description', description.trim());
+      formData.append('type', selectedCategory);
+      formData.append('address', location.trim());
+      formData.append('latitude', coordinates.latitude.toString());
+      formData.append('longitude', coordinates.longitude.toString());
+
+      // Add images if any
+      if (selectedImages.length > 0) {
+        selectedImages.forEach((image, index) => {
+          formData.append('images', {
+            uri: image.uri,
+            type: image.type || 'image/jpeg',
+            name: image.fileName || `image-${index}.jpg`
+          });
+        });
+      }
+
+      // Make request to backend
+      // Debug log
+      console.log('Submitting with data:', {
+        title: title.trim(),
+        description: description.trim(),
+        type: selectedCategory,
+        address: location.trim(),
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        imageCount: selectedImages.length
+      });
+
+      const response = await axios.post(
+        'http://10.0.2.2:8000/api/v1/issues/report',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          timeout: 10000 // 10 second timeout
+        }
+      );
+
+      if (response.data?.data) {
+        // Clear form first
         setTitle('');
         setDescription('');
         setSelectedCategory('');
         setLocation('');
         setCoordinates(null);
         setSelectedImages([]);
-        setIsSubmitting(false);
-        navigation.goBack();
-      }, 1500);
+        
+        // Show success message and navigate
+        Alert.alert(
+          'Success', 
+          'Your report has been submitted successfully! Our team will review it shortly.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to submit report. Please try again.');
+      console.error('Submit Error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        headers: error.response?.headers
+      });
+
+      let errorMessage = 'Failed to submit report. Please try again.';
+      
+      if (error.response) {
+        // Server responded with error
+        if (error.response.status === 401) {
+          errorMessage = 'Authentication failed. Please log in again.';
+        } else if (error.response.status === 400) {
+          errorMessage = error.response.data?.message || 'Invalid data provided. Please check your inputs.';
+        } else {
+          errorMessage = error.response.data?.message || 'Server error. Please try again.';
+        }
+      } else if (error.request) {
+        // Request made but no response
+        errorMessage = 'Could not reach the server. Please check your internet connection.';
+      }
+
+      Alert.alert(
+        'Error',
+        errorMessage,
+        [
+          { 
+            text: 'OK'
+          },
+          {
+            text: 'Try Again',
+            onPress: handleSubmit
+          }
+        ]
+      );
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -357,6 +483,12 @@ const ReportScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={[styles.container, backgroundStyle]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Show access token for debugging */}
+        <View style={{ padding: 10, backgroundColor: '#eee', marginBottom: 10 }}>
+          <Text style={{ fontSize: 12, color: '#333', fontFamily: 'monospace' }} numberOfLines={2} selectable>
+            Access Token: {accessToken || 'Not found'}
+          </Text>
+        </View>
         <Text style={[styles.title, { color: textColor }]}>Report an Issue</Text>
         
         <View style={[styles.card, { backgroundColor: cardBgColor, borderColor }]}>

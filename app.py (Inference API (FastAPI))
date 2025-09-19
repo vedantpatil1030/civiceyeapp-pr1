@@ -1,0 +1,37 @@
+from fastapi import FastAPI, UploadFile, Form
+import torch
+from torchvision import transforms
+from PIL import Image
+import io
+from train import SeverityModel  # import model definition
+
+app = FastAPI()
+
+# Load trained model
+model = SeverityModel()
+model.load_state_dict(torch.load("severity_model.pth", map_location="cpu"))
+model.eval()
+
+transform = transforms.Compose([
+    transforms.Resize((224,224)),
+    transforms.ToTensor()
+])
+
+CLASSES = ["Low", "Medium", "High"]
+
+@app.post("/predict/")
+async def predict(file: UploadFile, location_type: str = Form("residential"), reports_count: int = Form(1)):
+    # Image processing
+    image = Image.open(io.BytesIO(await file.read())).convert("RGB")
+    image = transform(image).unsqueeze(0)
+
+    # Metadata
+    loc_type = 1 if location_type in ["highway","school","hospital"] else 0
+    meta = torch.tensor([[loc_type, reports_count]], dtype=torch.float32)
+
+    with torch.no_grad():
+        outputs = model(image, meta)
+        _, predicted = torch.max(outputs, 1)
+        severity = CLASSES[predicted.item()]
+
+    return {"priority": severity}

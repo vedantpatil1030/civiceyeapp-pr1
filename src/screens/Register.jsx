@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, Platform, PermissionsAndroid, Linking } from 'react-native';
-import { launchImageLibrary } from 'react-native-image-picker'; // For bare RN, use react-native-image-picker.
+import { launchImageLibrary } from 'react-native-image-picker'; 
 import { useNavigation, useIsFocused } from '@react-navigation/native';
-// import AsyncStorage from '@react-native-async-storage/async-storage'; // Uncomment when ready to use
-
+// import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios'; 
 const defaultAvatar = 'https://www.svgrepo.com/show/382106/profile-avatar.svg';
 
 const genderOptions = [
@@ -18,6 +18,7 @@ const RegisterScreen = () => {
   const [phone, setPhone] = useState('');
   const [aadhaar, setAadhaar] = useState('');
   const [gender, setGender] = useState('');
+  const [verificationId, setVerificationId] = useState('');
   
   const [avatarUrl, setAvatarUrl] = useState('');
   const [otpSent, setOtpSent] = useState(false);
@@ -92,19 +93,47 @@ const RegisterScreen = () => {
     }
     setLoading(true);
     try {
-      const res = await axios.post("http://localhost:8000/api/v1/otp/send", {
+      console.log('📞 Sending OTP to:', phone);
+      const res = await axios.post("http://10.0.2.2:8000/api/v1/otp/send", {
         mobileNumber: phone,
       });
-      setVerificationId(res.data.data.verificationId);
-      setOtpSent(true);
-      Alert.alert("OTP Sent","Check your phone for OTP");
+      console.log('📨 OTP Response:', res.data);
+      
+      if (res.data && res.data.data && res.data.data.verificationId) {
+        setVerificationId(res.data.data.verificationId);
+        setOtpSent(true);
+        Alert.alert("OTP Sent","Check your phone for OTP");
+      } else {
+        console.error('❌ Invalid response structure:', res.data);
+        Alert.alert("Error", "Invalid response from server");
+      }
     } catch (err) {
-      Alert.alert("Error", err.response?.data?.message || "Failed to send OTP");
+      console.error('❌ OTP Error:', err);
+      console.error('❌ Error Response:', err.response?.data);
+      console.error('❌ Error Status:', err.response?.status);
+      
+      if (err.code === 'ECONNREFUSED') {
+        Alert.alert("Connection Error", "Cannot connect to server. Make sure backend is running on port 8000.");
+      } else if (err.response?.status === 404) {
+        Alert.alert("Error", "OTP service not found. Check backend routes.");
+      } else {
+        Alert.alert("Error", err.response?.data?.message || err.message || "Failed to send OTP");
+      }
+    } finally {
+      setLoading(false);
     }
   };
   
 
   const handleRegister = async () => {
+    if (!name.trim()) {
+      if (isFocused) Alert.alert('Missing Name', 'Please enter your full name.');
+      return;
+    }
+    if (!email.trim() || !email.includes('@')) {
+      if (isFocused) Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
     if (aadhaar.length !== 12) {
       if (isFocused) Alert.alert('Invalid Aadhaar', 'Enter a valid 12-digit Aadhaar number.');
       return;
@@ -119,32 +148,76 @@ const RegisterScreen = () => {
     }
     setLoading(true);
     try {
-      const resVerify = await fetch("http://localhost:8000/api/v1/otp/verify",{
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mobileNumber: phone, verificationId, code: otp })
+      // First verify OTP
+      const resVerify = await axios.post("http://10.0.2.2:8000/api/v1/otp/verify", {
+        mobileNumber: phone, 
+        verificationId, 
+        code: otp 
       });
 
-      const verifyData = await resVerify.json();
-      if (verifyData.status !== "VERIFIED") {
+      console.log('OTP Verify Response:', resVerify.data);
+      
+      if (resVerify.data.responseCode !== 200) {
         Alert.alert("Error", "OTP verification failed");
         return;
       }
 
-      const res = await fetch("http://localhost:8000/api/v1/users/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName: name, email, mobileNumber: phone, aadharNumber: aadhaar, gender, avatar: avatarUrl })
+      // Check if user already exists
+      const checkRes = await axios.post("http://10.0.2.2:8000/api/v1/users/check-register", {
+        mobileNumber: phone,
+        email: email,
+        aadharNumber: aadhaar
       });
 
-      const data = await res.json();
-      Alert.alert("Success", "Registration successful!");
-      console.log("Tokens", data.data.accessToken, data.data.refreshToken);
+      console.log('Check Register Response:', checkRes.data);
+
+      // Create FormData for multipart form data with avatar
+      const formData = new FormData();
+      formData.append('fullName', name);
+      formData.append('email', email);
+      formData.append('mobileNumber', phone);
+      formData.append('aadharNumber', aadhaar);
+      formData.append('gender', gender);
+      
+      if (avatarUrl) {
+        formData.append('avatar', {
+          uri: avatarUrl,
+          type: 'image/jpeg',
+          name: 'avatar.jpg'
+        });
+      }
+
+      // Register user
+      const registerRes = await axios.post("http://10.0.2.2:8000/api/v1/users/register", formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      console.log('Registration Response:', registerRes.data);
+
+      if (registerRes.data.statusCode === 201 || registerRes.data.success) {
+        // Store tokens in AsyncStorage (commented out for now)
+        const { accessToken, refreshToken } = registerRes.data.data;
+        // await AsyncStorage.setItem('accessToken', accessToken);
+        // await AsyncStorage.setItem('refreshToken', refreshToken);
+        // await AsyncStorage.setItem('user', JSON.stringify(registerRes.data.data.user));
+        
+        console.log('✅ Registration successful! Tokens:', { accessToken, refreshToken });
+
+        Alert.alert("Success", "Registration successful!", [
+          { text: 'OK', onPress: () => navigation.navigate('Login') }
+        ]);
+      } else {
+        Alert.alert("Error", registerRes.data.message || "Registration failed");
+      }
 
     } catch (err) {
-      Alert.alert("Error", err.message);
+      console.error('Registration Error:', err);
+      Alert.alert("Error", err.response?.data?.message || err.message || "Registration failed");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

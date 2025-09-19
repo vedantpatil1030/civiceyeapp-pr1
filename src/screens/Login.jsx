@@ -1,149 +1,365 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Alert, 
+  ActivityIndicator,
+  useColorScheme 
+} from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 
 const LoginScreen = () => {
   const [phone, setPhone] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
+  const [verificationId, setVerificationId] = useState('');
   const [loading, setLoading] = useState(false);
   const navigation = useNavigation();
   const isFocused = useIsFocused();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
-  const handleSendOtp = async () => {
+  // Step 1: Check if user exists
+  const checkUserExists = async () => {
     if (phone.length !== 10) {
-      if (isFocused) Alert.alert('Invalid Phone', 'Enter a valid 10-digit phone number.');
+      Alert.alert('Invalid Phone', 'Enter a valid 10-digit phone number.');
       return;
     }
+
     setLoading(true);
     try {
-      // --- Call backend API to send OTP ---
-      // const response = await fetch('https://your-backend.com/api/send-otp', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ phone }),
-      // });
-      // const data = await response.json();
-      // if (!response.ok) throw new Error(data.message || 'Failed to send OTP');
-      // --- End backend call ---
+      console.log('📞 Checking if user exists:', phone);
+      const response = await axios.post("http://10.0.2.2:8000/api/v1/users/check-login", {
+        mobileNumber: phone
+      });
 
-      setOtpSent(true);
-      if (isFocused) Alert.alert('OTP Sent', 'An OTP has been sent to your phone.');
-    } catch (err) {
-      if (isFocused) Alert.alert('Error', err.message || 'Failed to send OTP.');
+      console.log('✅ User check response:', response.data);
+      
+      if (response.data.statusCode === 200) {
+        // User exists, proceed to send OTP
+        await sendOtp();
+      } else {
+        Alert.alert(
+          'User Not Found', 
+          'No account found with this mobile number. Please register first.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Register', onPress: () => navigation.navigate('Register') }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('❌ User check error:', error);
+      if (error.response?.status === 404) {
+        Alert.alert(
+          'User Not Found', 
+          'No account found with this mobile number. Please register first.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Register', onPress: () => navigation.navigate('Register') }
+          ]
+        );
+      } else {
+        Alert.alert('Error', error.response?.data?.message || 'Failed to verify user');
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
+  // Step 2: Send OTP
+  const sendOtp = async () => {
+    try {
+      console.log('📨 Sending OTP to:', phone);
+      const response = await axios.post("http://10.0.2.2:8000/api/v1/otp/send", {
+        mobileNumber: phone
+      });
+
+      console.log('✅ OTP sent response:', response.data);
+      
+      if (response.data.responseCode === 200) {
+        setVerificationId(response.data.data.verificationId);
+        setOtpSent(true);
+        Alert.alert('OTP Sent', 'Please check your phone for the OTP code.');
+      } else {
+        Alert.alert('Error', 'Failed to send OTP. Please try again.');
+      }
+    } catch (error) {
+      console.error('❌ OTP send error:', error, error.response?.data);
+      Alert.alert('Error', error.response?.data?.message || error.message || 'Failed to send OTP');
+    }
+  };
+
+  // Step 3: Verify OTP and Login
   const handleLogin = async () => {
-    if (!otp) {
-      if (isFocused) Alert.alert('Missing OTP', 'Please enter the OTP sent to your phone.');
+    if (!otp || otp.length !== 4) {
+      Alert.alert('Invalid OTP', 'Please enter the 4-digit OTP sent to your phone.');
       return;
     }
+
     setLoading(true);
     try {
-      // --- Call backend API to verify OTP and login ---
-      // const response = await fetch('https://your-backend.com/api/login', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ phone, otp }),
-      // });
-      // const data = await response.json();
-      // if (!response.ok) throw new Error(data.message || 'Login failed');
-      // --- End backend call ---
+      // First verify OTP
+      console.log('🔐 Verifying OTP:', otp);
+      const otpResponse = await axios.post("http://10.0.2.2:8000/api/v1/otp/verify", {
+        mobileNumber: phone,
+        verificationId: verificationId,
+        code: otp
+      });
 
-      if (isFocused) Alert.alert('Login Success', 'You are now logged in!');
-      // TODO: Navigate to home/dashboard screen after login
-    } catch (err) {
-      if (isFocused) Alert.alert('Error', err.message || 'Login failed.');
+      console.log('✅ OTP verification response:', otpResponse.data);
+
+      if (otpResponse.data.responseCode === 200) {
+        // OTP verified, now login
+        console.log('🔑 Logging in user:', phone);
+        const loginResponse = await axios.post("http://10.0.2.2:8000/api/v1/users/login", {
+          mobileNumber: phone
+        });
+
+        console.log('✅ Login response:', loginResponse.data);
+
+        if (loginResponse.data.statusCode === 200) {
+          const { user, accessToken, refreshToken } = loginResponse.data.data;
+          
+          // Store tokens and minimal user data for persistent login
+          await AsyncStorage.setItem('accessToken', accessToken);
+          await AsyncStorage.setItem('refreshToken', refreshToken);
+          const minimalUser = { _id: user._id, fullName: user.fullName, role: user.role };
+          await AsyncStorage.setItem('user', JSON.stringify(minimalUser));
+
+          Alert.alert('Login Successful', 'Welcome back!', [
+            { text: 'OK', onPress: () => navigation.reset({
+                index: 0,
+                routes: [{ name: 'MainTabs', state: { index: 0, routes: [{ name: 'Report' }] } }],
+              }) 
+            }
+          ]);
+        } else {
+          Alert.alert('Error', loginResponse.data.message || 'Login failed');
+        }
+      } else {
+        Alert.alert('Invalid OTP', 'The OTP you entered is incorrect. Please try again.');
+      }
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Login failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Phone Number"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-        maxLength={10}
-      />
-      {!otpSent ? (
-        <TouchableOpacity style={styles.button} onPress={handleSendOtp} disabled={loading}>
-          <Text style={styles.buttonText}>{loading ? 'Sending OTP...' : 'Get OTP'}</Text>
-        </TouchableOpacity>
-      ) : (
-        <>
+  // Resend OTP
+  const resendOtp = async () => {
+    setOtp('');
+    await sendOtp();
+  };
+
+  const styles = getStyles(isDark);
+
+  if (otpSent) {
+    // OTP Verification Screen
+    return (
+      <View style={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.title}>Verify Mobile Number</Text>
+          <Text style={styles.subtitle}>
+            Enter the 6-digit OTP sent to +91 {phone}
+          </Text>
+
           <TextInput
             style={styles.input}
-            placeholder="Enter OTP"
+            placeholder="Enter 6-digit OTP"
+            placeholderTextColor={isDark ? '#666' : '#999'}
             value={otp}
             onChangeText={setOtp}
-            keyboardType="number-pad"
-            maxLength={6}
+            keyboardType="numeric"
+            maxLength={4}
+            autoFocus
           />
-          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-            <Text style={styles.buttonText}>{loading ? 'Logging in...' : 'Login'}</Text>
+
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Verify & Login</Text>
+            )}
           </TouchableOpacity>
-        </>
-      )}
-      <TouchableOpacity
-        style={{ marginTop: 24, alignSelf: 'center' }}
-        onPress={() => navigation.navigate('Register')}
-      >
-        <Text style={{ color: '#0984e3', textDecorationLine: 'underline' }}>
-          Don't have an account? Register
-        </Text>
-      </TouchableOpacity>
-      {/* Link to Report page */}
-      <TouchableOpacity
-        style={{ marginTop: 16, alignSelf: 'center' }}
-        onPress={() => navigation.navigate('Report')}
-      >
-        <Text style={{ color: '#00b894', textDecorationLine: 'underline' }}>
-          Go to Report Issue
-        </Text>
-      </TouchableOpacity>
+
+          <TouchableOpacity style={styles.linkButton} onPress={resendOtp}>
+            <Text style={styles.linkText}>Didn't receive OTP? Resend</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => setOtpSent(false)}
+          >
+            <Text style={styles.linkText}>← Change Mobile Number</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Mobile Number Entry Screen
+  return (
+    <View style={styles.container}>
+      <View style={styles.card}>
+        <Text style={styles.title}>Welcome Back</Text>
+        <Text style={styles.subtitle}>Enter your mobile number to login</Text>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Mobile Number (10 digits)"
+          placeholderTextColor={isDark ? '#666' : '#999'}
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="numeric"
+          maxLength={10}
+          autoFocus
+        />
+
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={checkUserExists}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Continue</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.linkButton}
+          onPress={() => navigation.navigate('Register')}
+        >
+          <Text style={styles.linkText}>Don't have an account? Register</Text>
+        </TouchableOpacity>
+
+        <View style={styles.quickLinksSection}>
+          <Text style={styles.sectionTitle}>Quick Links</Text>
+          <View style={styles.quickLinkRow}>
+            <TouchableOpacity style={styles.quickLinkButton} onPress={() => navigation.navigate('Map')}>
+              <Text style={styles.quickLinkText}>Map</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickLinkButton} onPress={() => navigation.navigate('Report')}>
+              <Text style={styles.quickLinkText}>Report</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickLinkButton} onPress={() => navigation.navigate('Status')}>
+              <Text style={styles.quickLinkText}>Status</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickLinkButton} onPress={() => navigation.navigate('Register')}>
+              <Text style={styles.quickLinkText}>Register</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: isDark ? '#000' : '#f5f5f5',
     justifyContent: 'center',
+    padding: 20,
+  },
+  card: {
+    backgroundColor: isDark ? '#1a1a1a' : '#fff',
+    borderRadius: 15,
+    padding: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
   title: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 24,
+    color: isDark ? '#fff' : '#333',
     textAlign: 'center',
-    color: '#2d3436',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: isDark ? '#ccc' : '#666',
+    textAlign: 'center',
+    marginBottom: 30,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#b2bec3',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 14,
-    backgroundColor: '#fff',
+    borderColor: isDark ? '#333' : '#ddd',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 20,
+    fontSize: 16,
+    backgroundColor: isDark ? '#2a2a2a' : '#fff',
+    color: isDark ? '#fff' : '#333',
   },
   button: {
-    backgroundColor: '#0984e3',
-    padding: 14,
-    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    borderRadius: 10,
+    padding: 15,
     alignItems: 'center',
-    marginTop: 8,
+    marginBottom: 15,
+  },
+  buttonDisabled: {
+    backgroundColor: '#007AFF80',
   },
   buttonText: {
     color: '#fff',
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  linkButton: {
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  linkText: {
+    color: '#007AFF',
+    fontSize: 16,
+  },
+  quickLinksSection: {
+    marginTop: 20,
+  },
+  sectionTitle: {
+    color: isDark ? '#fff' : '#333',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  quickLinkRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  quickLinkButton: {
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#ddd',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    margin: 4,
+    backgroundColor: isDark ? '#2a2a2a' : '#fafafa',
+  },
+  quickLinkText: {
+    color: isDark ? '#fff' : '#333',
+    fontSize: 14,
   },
 });
 
 export default LoginScreen;
+

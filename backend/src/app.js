@@ -23,6 +23,7 @@ import issueRouter from "./routes/issue.routes.js";
 import statsRouter from "./routes/stats.routes.js";
 
 //routes declaration
+
 app.use("/api/v1/users", userRouter);
 app.use("/api/v1/otp", otpRouter);
 app.use("/api/v1/departments", departmentRouter);
