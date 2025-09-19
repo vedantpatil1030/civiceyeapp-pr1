@@ -35,7 +35,14 @@ const issueSchema = new Schema({
 
     status: {
         type: String,
-        enum: ["REPORTED","ASSIGNED_DEPT","ASSIGNED_STAFF","IN_PROGRESS","COMPLETED","VERIFIED","RESOLVED"],
+        enum: [
+          "REPORTED",
+          "ASSIGNED_DEPT",
+          "ASSIGNED_STAFF",
+          "IN_PROGRESS",
+          "COMPLETED",
+          "VERIFIED",
+          "RESOLVED"],
         default: "REPORTED"
     },
 
@@ -49,6 +56,7 @@ const issueSchema = new Schema({
     }],
 
     upvotes: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    upvoteCount: { type: Number, default: 0},
 
     comments: [{
         user: { type: Schema.Types.ObjectId, ref: "User" },
@@ -65,4 +73,6 @@ const issueSchema = new Schema({
 },{ timestamps: true });
 
 issueSchema.index({ "location": "2dsphere"});
+issueSchema.index({ upvoteCount: -1 });
+
 export const Issue = mongoose.model("Issue", issueSchema);
