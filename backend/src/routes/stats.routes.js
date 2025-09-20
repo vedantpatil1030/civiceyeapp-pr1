@@ -7,7 +7,8 @@ import {
     getRecentIssues,
     getAllUsers,
     updateUser,
-    deleteUser
+    deleteUser,
+    getUserRolesDistribution
 } from "../controllers/stats.controller.js";
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.route("/issues/total").get(getTotalIssues);
 router.route("/issues/resolved").get(getResolvedIssues);
 router.route("/issues/critical").get(getCriticalIssues);
 router.route("/issues/recent").get(getRecentIssues);
+router.route("/users/roles-distribution").get(getUserRolesDistribution);
 router.route("/getAllUsers").get(getAllUsers);
 router.route("/update/:id").put(updateUser);
 router.route("/delete/:id").delete(deleteUser);
