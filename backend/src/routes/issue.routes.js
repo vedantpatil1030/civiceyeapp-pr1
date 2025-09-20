@@ -80,7 +80,7 @@ router.route("/nearby").get(
 );
 
 router.route("/getAllIssues").get(
-    verifyJWT,
+    // verifyJWT,
     getAllIssues
 );
 

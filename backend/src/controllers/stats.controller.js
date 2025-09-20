@@ -1,3 +1,16 @@
+// 5. User Roles Distribution
+const getUserRolesDistribution = asyncHandler(async (req, res) => {
+    // Adjust roles as per your schema
+    const roles = ["CITIZEN", "MUNICIPAL_ADMIN", "DEPARTMENT_ADMIN", "STAFF"];
+    const roleCounts = {};
+    for (const role of roles) {
+        roleCounts[role] = await User.countDocuments({ role });
+    }
+    const total = await User.countDocuments();
+    return res
+        .status(200)
+        .json(new ApiResponse(200, { roleCounts, total }, "User roles distribution fetched"));
+});
 import { Issue } from "../models/issue.model.js";
 import { User } from "../models/user.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -100,5 +113,6 @@ export {
     getRecentIssues,
     getAllUsers,
     updateUser,
-    deleteUser
+    deleteUser,
+    getUserRolesDistribution
 }
