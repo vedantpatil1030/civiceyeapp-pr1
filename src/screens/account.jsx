@@ -46,12 +46,13 @@ const AccountScreen = ({ navigation }) => {
 
   // Load user data from backend on mount
   useEffect(() => {
+    let isMounted = true;
     const fetchProfile = async () => {
+      if (!isMounted) return;
       try {
         setPageLoading(true);
         const token = await AsyncStorage.getItem('accessToken');
         if (!token) {
-          // Instead of forcing logout, just show error and let user retry
           Alert.alert('Error', 'No access token found. Please try logging in again if the problem persists.');
           setPageLoading(false);
           return;
@@ -77,6 +78,9 @@ const AccountScreen = ({ navigation }) => {
       }
     };
     fetchProfile();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Open edit modal for specific field

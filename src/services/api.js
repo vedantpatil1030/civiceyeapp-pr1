@@ -4,9 +4,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Create axios instance
 const api = axios.create({
   baseURL: 'http://10.0.2.2:8000', // For Android Emulator accessing localhost
-  timeout: 10000,
+  timeout: 15000, // Increased timeout
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  },
+  validateStatus: status => status >= 200 && status < 500, // Handle all non-500 errors in responses
+  // Add retry configuration
+  retry: 3,
+  retryDelay: (retryCount) => retryCount * 1000, // 1s, 2s, 3s
+  shouldRetry: (error) => {
+    const shouldRetry = !error.response || error.code === 'ECONNABORTED';
+    return shouldRetry;
   }
 });
 
@@ -44,19 +53,53 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
       } catch (refreshError) {
-        // If refresh fails, clear all auth data
+        // If refresh fails, clear all auth data and provide detailed error
         await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Session expired. Please login again.');
+        console.error('Token refresh failed:', {
+          message: refreshError.message,
+          response: refreshError.response?.data,
+          status: refreshError.response?.status
+        });
+        return Promise.reject(new Error('Your session has expired. Please login again.'));
       }
     }
 
+    // Enhanced error handling for different scenarios
+    if (!error.response) {
+      // Network error
+      console.error('Network Error:', {
+        message: error.message,
+        code: error.code,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          timeout: error.config?.timeout
+        }
+      });
+      
+      if (error.code === 'ECONNABORTED') {
+        return Promise.reject(new Error('Request timed out. Please try again.'));
+      }
+      
+      if (!navigator.onLine) {
+        return Promise.reject(new Error('No internet connection. Please check your network.'));
+      }
+      
+      return Promise.reject(new Error('Network error. Unable to connect to server.'));
+    }
+
+    // Log API errors with detailed information
     console.error('API Error:', {
       url: error.config?.url,
+      method: error.config?.method,
       status: error.response?.status,
       data: error.response?.data,
       message: error.message
     });
-    return Promise.reject(error);
+    
+    // Return a more user-friendly error message
+    const errorMessage = error.response?.data?.message || 'An unexpected error occurred. Please try again.';
+    return Promise.reject(new Error(errorMessage));
   }
 );
 

@@ -1,7 +1,9 @@
+import mongoose, { Schema } from "mongoose";
 const staffSchema = new Schema({
-    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    department: { type: String, required: true },
-    designation: { type: string },
-});
+    name: String,
+    userRef: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    department: { type: mongoose.Schema.Types.ObjectId, ref: "Department" },
+    disActive: { type: Boolean, default: true }
+}, { timestamps: true });
 
 export const Staff = mongoose.model("Staff", staffSchema);

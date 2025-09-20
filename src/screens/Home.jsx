@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import AccountIcon from '../components/AccountIcon';
+
 import {
   View,
   Text,
@@ -32,28 +34,52 @@ const Home = () => {
   const navigation = useNavigation();
 
   useEffect(() => {
-    fetchIssues();
+    let isMounted = true;
+    checkApiConnection();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const handleUpvote = async (issueId) => {
+  const checkApiConnection = async (retryCount = 0) => {
     try {
-      const response = await api.post(`/api/v1/issues/${issueId}/upvote`);
-      const { upvoted, upvoteCount } = response.data.data;
+      if (!retryCount) {
+        setLoading(true);
+        setError(null);
+      }
       
-      // Update local state
-      setIssues(issues.map(issue => {
-        if (issue._id === issueId) {
-          return {
-            ...issue,
-            upvotes: upvoted 
-              ? [...(issue.upvotes || []), user._id]
-              : (issue.upvotes || []).filter(id => id !== user._id)
-          };
-        }
-        return issue;
-      }));
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update upvote. Please try again.');
+      const response = await api.get('/health', {
+        timeout: 5000 // Shorter timeout for health check
+      });
+
+      if (response.data?.status === 'ok') {
+        await fetchIssues();
+      } else {
+        throw new Error('Server health check failed');
+      }
+    } catch (err) {
+      console.error('API Connection Error:', {
+        message: err.message,
+        status: err.response?.status,
+        data: err.response?.data,
+        attempt: retryCount + 1
+      });
+      
+      if (retryCount < 2) { // Try up to 3 times
+        console.log(`Retrying API connection (attempt ${retryCount + 1}/3)`);
+        setTimeout(() => checkApiConnection(retryCount + 1), 2000 * (retryCount + 1)); // Exponential backoff
+        return;
+      }
+      
+      // Check specific error conditions
+      if (err.code === 'ECONNABORTED') {
+        setError('Server is not responding. Please try again later.');
+      } else if (!err.response) {
+        setError('Cannot connect to server. Please check your internet connection.');
+      } else {
+        setError(`Server error: ${err.response?.data?.message || 'Please try again later.'}`);
+      }
+      setLoading(false);
     }
   };
 
@@ -61,52 +87,76 @@ const Home = () => {
     try {
       setLoading(true);
       setError(null);
-
+      console.log('Fetching issues...');
       const response = await api.get('/api/v1/issues/all');
-      console.log('Debug - API Response:', {
-        status: response.status,
-        dataLength: response.data?.data?.issues?.length || 0
-      });
       
-      const issues = response.data?.data?.issues || [];
-      setIssues(issues);
-      setError(null);
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Failed to fetch issues');
+      }
+      
+      console.log('Response:', response.data);
+      setIssues(response.data.data || []);
     } catch (err) {
-      console.error('Error fetching issues:', err);
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to fetch issues';
+      console.error('Error fetching issues:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+      });
+      setError('Error fetching issues: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpvote = async (issueId) => {
+    try {
+      const response = await api.post(`/api/v1/issues/${issueId}/upvote`);
       
-      if (err.message === 'Session expired. Please login again.') {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' }]
-        });
+      if (!response.data?.data) {
+        throw new Error('Invalid response from server');
+      }
+      
+      // Update local state with new upvote status
+      setIssues(prevIssues => prevIssues.map(issue => {
+        if (issue._id === issueId) {
+          return {
+            ...issue,
+            upvotes: response.data.data.upvoted 
+              ? [...(issue.upvotes || []), user._id]
+              : (issue.upvotes || []).filter(id => id !== user._id),
+            upvoteCount: response.data.data.upvoteCount
+          };
+        }
+        return issue;
+      }));
+    } catch (error) {
+      console.error('Upvote error:', {
+        message: error.message,
+        response: error.response?.data
+      });
+
+      if (error.response?.status === 401) {
+        Alert.alert('Session Expired', 'Please login again to continue.', [
+          {
+            text: 'OK',
+            onPress: () => navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }]
+            })
+          }
+        ]);
         return;
       }
 
-      const errorMessage = err.response?.data?.message || 'Failed to load issues. Please try again.';
-      setError(errorMessage);
-      
-      if (err.response?.status === 401) {
-        Alert.alert(
-          'Authentication Error', 
-          'Please login again to continue.',
-          [
-            { 
-              text: 'OK', 
-              onPress: () => navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }]
-              })
-            }
-          ]
-        );
-      } else {
-        Alert.alert('Error', errorMessage);
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      Alert.alert(
+        'Error', 
+        error.response?.data?.message || 'Failed to update upvote. Please try again.'
+      );
     }
   };
+
+  // Removed duplicate fetchIssues function
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -124,11 +174,15 @@ const Home = () => {
         text: commentText.trim()
       });
 
+      if (!response.data?.data?.comment) {
+        throw new Error('Invalid response from server');
+      }
+
       // Get the new comment from the response
       const newComment = response.data.data.comment;
 
       // Update local state to show the new comment
-      setIssues(issues.map(issue => {
+      setIssues(prevIssues => prevIssues.map(issue => {
         if (issue._id === issueId) {
           return {
             ...issue,
@@ -137,19 +191,32 @@ const Home = () => {
         }
         return issue;
       }));
+      
       setCommentText('');
       setActiveCommentId(null);
     } catch (error) {
-      console.error('Comment error:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to add comment. Please try again.';
-      Alert.alert('Error', errorMessage);
-      
+      console.error('Comment error:', {
+        message: error.message,
+        response: error.response?.data
+      });
+
       if (error.response?.status === 401) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' }]
-        });
+        Alert.alert('Session Expired', 'Please login again to continue.', [
+          {
+            text: 'OK',
+            onPress: () => navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }]
+            })
+          }
+        ]);
+        return;
       }
+
+      Alert.alert(
+        'Error', 
+        error.response?.data?.message || 'Failed to add comment. Please try again.'
+      );
     }
   };
 
@@ -177,7 +244,7 @@ const Home = () => {
         <View style={styles.issueHeader}>
           <View style={styles.userInfo}>
             <View style={styles.userTextInfo}>
-              <Text style={styles.userName}>Report #{issue._id.slice(-4)}</Text>
+              
               <Text style={styles.timestamp}>{formatDate(issue.createdAt)}</Text>
             </View>
           </View>
@@ -271,34 +338,34 @@ const Home = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'REPORTED':
-        return '#FF9500';
+        return '#D88C00';
       case 'ASSIGNED_DEPT':
-        return '#5856D6';
+        return '#4040B2';
       case 'ASSIGNED_STAFF':
-        return '#5856D6';
+        return '#4040B2';
       case 'IN_PROGRESS':
-        return '#007AFF';
+        return '#0A3D91';
       case 'COMPLETED':
-        return '#34C759';
+        return '#1A844C';
       case 'VERIFIED':
-        return '#34C759';
+        return '#1A844C';
       case 'RESOLVED':
-        return '#34C759';
+        return '#1A844C';
       default:
-        return '#8E8E93';
+        return '#636366';
     }
   };
 
   const getPriorityColor = (priority) => {
     switch (priority) {
       case 'HIGH':
-        return '#FF3B30';
+        return '#D70015';
       case 'MEDIUM':
-        return '#FF9500';
+        return '#D88C00';
       case 'LOW':
-        return '#34C759';
+        return '#1A844C';
       default:
-        return '#8E8E93';
+        return '#636366';
     }
   };
 
@@ -306,11 +373,15 @@ const Home = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Community Issues</Text>
+        <View style={styles.headerRight}>
+          
+          <AccountIcon />
+        </View>
       </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" color="#0A3D91" />
         </View>
       ) : error ? (
         <View style={styles.errorContainer}>
@@ -340,191 +411,68 @@ const Home = () => {
 };
 
 const styles = StyleSheet.create({
+  // Main Container
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#0F1419',
   },
-  issuesList: {
-    padding: 16,
-  },
-  issueCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 16,
-    padding: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  issueHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  userTextInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  timestamp: {
-    fontSize: 14,
-    color: '#8E8E93',
-  },
-  issueTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000000',
-    marginBottom: 8,
-  },
-  issueDescription: {
-    fontSize: 16,
-    color: '#000000',
-    marginBottom: 12,
-  },
-  issueImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  issueFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  tagContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  typeTag: {
-    backgroundColor: '#E5E5EA',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  typeText: {
-    color: '#000000',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  tagText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#FF3B30',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  retryText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#8E8E93',
-    textAlign: 'center',
-  },
+
+  // Header Section
   header: {
-    padding: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1C2128',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
+    borderBottomColor: '#2D333B',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000000',
-  },
-  loadingContainer: {
+    fontWeight: '700',
+    color: '#F0F6FC',
+    letterSpacing: -0.3,
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
+  headerRight: {
+    paddingLeft: 16,
   },
-  errorText: {
-    fontSize: 16,
-    color: '#FF3B30',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    padding: 12,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-  },
-  retryText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+
+  // Issues List
   issuesList: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 20,
   },
+
+  // Issue Card
   issueCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 16,
-    padding: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#21262D',
+    borderRadius: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#30363D',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
   },
+
+  // Issue Header
   issueHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
   userInfo: {
     flexDirection: 'row',
@@ -535,60 +483,150 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#30363D',
   },
   avatarPlaceholder: {
-    backgroundColor: '#E5E5EA',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#30363D',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#30363D',
   },
   avatarText: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#8E8E93',
+    color: '#7D8590',
   },
   userTextInfo: {
     flex: 1,
   },
   userName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#000000',
+    color: '#F0F6FC',
+    marginBottom: 2,
   },
   timestamp: {
-    fontSize: 14,
-    color: '#8E8E93',
-    marginTop: 2,
+    fontSize: 13,
+    color: '#7D8590',
   },
+
+  // Issue Content
   issueTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000000',
+    color: '#F0F6FC',
     marginBottom: 8,
+    lineHeight: 24,
+    paddingHorizontal: 16,
   },
   issueDescription: {
-    fontSize: 16,
-    color: '#000000',
-    marginBottom: 12,
+    fontSize: 15,
+    color: '#C9D1D9',
+    marginBottom: 16,
+    lineHeight: 22,
+    paddingHorizontal: 16,
   },
   issueImage: {
     width: '100%',
-    height: width * 0.6,
-    borderRadius: 8,
-    marginBottom: 12,
+    height: Math.min(width * 0.6, 240),
+    marginBottom: 16,
   },
+
+  // Issue Footer
   issueFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#30363D',
   },
-  footerLeft: {
+  tagContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+    flexWrap: 'wrap',
   },
+  typeTag: {
+    backgroundColor: '#1F6FEB',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  typeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  tag: {
+    backgroundColor: '#30363D',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  tagText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#C9D1D9',
+  },
+
+  // Priority Tags
+  priorityHigh: {
+    backgroundColor: '#DA3633',
+  },
+  priorityMedium: {
+    backgroundColor: '#FB8500',
+  },
+  priorityLow: {
+    backgroundColor: '#238636',
+  },
+
+  // Interaction Buttons
+  interactionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  interactionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    marginLeft: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#30363D',
+  },
+  upvotedButton: {
+    backgroundColor: '#1F6FEB',
+    borderColor: '#1F6FEB',
+  },
+  interactionText: {
+    marginLeft: 4,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#7D8590',
+  },
+  upvotedText: {
+    color: '#FFFFFF',
+  },
+
+  // Action Buttons
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -601,149 +639,146 @@ const styles = StyleSheet.create({
   actionText: {
     marginLeft: 4,
     fontSize: 14,
-    color: '#8E8E93',
+    color: '#7D8590',
   },
   actionTextActive: {
-    color: '#007AFF',
+    color: '#1F6FEB',
   },
-  interactionContainer: {
+  footerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
   },
-  interactionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 16,
-    borderRadius: 20,
-    backgroundColor: '#F2F2F7',
-  },
-  upvotedButton: {
-    backgroundColor: '#E1F0FF',
-  },
-  interactionText: {
-    marginLeft: 4,
-    fontSize: 14,
-    color: '#666',
-  },
-  upvotedText: {
-    color: '#007AFF',
-  },
+
+  // Comments Section
   commentSection: {
-    marginTop: 12,
+    backgroundColor: '#1C2128',
     borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-    paddingTop: 12,
+    borderTopColor: '#30363D',
+    padding: 16,
   },
   commentList: {
-    marginBottom: 12,
+    marginBottom: 16,
+  },
+  commentsList: {
+    marginBottom: 16,
   },
   commentItem: {
-    marginBottom: 8,
-    padding: 8,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 8,
-  },
-  commentUser: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000000',
-    marginBottom: 4,
-  },
-  commentText: {
-    fontSize: 14,
-    color: '#000000',
-  },
-  commentTime: {
-    fontSize: 12,
-    color: '#8E8E93',
-    marginTop: 4,
-  },
-  commentInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-    paddingTop: 12,
-  },
-  input: {
-    flex: 1,
-    height: 40,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    marginRight: 8,
-    color: '#000000',
-  },
-  sendButton: {
-    padding: 8,
-  },
-  tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  tagText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  commentSection: {
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-    paddingTop: 12,
-  },
-  commentInput: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#21262D',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
-    minHeight: 40,
-  },
-  commentButton: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-  },
-  commentButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  commentsList: {
-    marginTop: 12,
-  },
-  commentItem: {
-    marginBottom: 8,
-    padding: 8,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#30363D',
   },
   commentUser: {
-    fontWeight: '600',
     fontSize: 14,
+    fontWeight: '600',
+    color: '#F0F6FC',
     marginBottom: 4,
   },
   commentText: {
     fontSize: 14,
+    color: '#C9D1D9',
+    lineHeight: 20,
     marginBottom: 4,
   },
   commentTime: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: '#7D8590',
   },
-  emptyContainer: {
-    padding: 32,
+
+  // Comment Input
+  commentInput: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#21262D',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#30363D',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    color: '#F0F6FC',
+    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 40,
+  },
+  sendButton: {
+    backgroundColor: '#238636',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginLeft: 8,
+  },
+  commentButton: {
+    backgroundColor: '#238636',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-end',
+  },
+  commentButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // Loading States
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0F1419',
+  },
+
+  // Error States
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    backgroundColor: '#0F1419',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#F85149',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  retryButton: {
+    backgroundColor: '#238636',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Empty States
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    margin: 16,
+    backgroundColor: '#21262D',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#30363D',
   },
   emptyText: {
     fontSize: 16,
-    color: '#8E8E93',
+    color: '#7D8590',
     textAlign: 'center',
+    lineHeight: 24,
   },
 });
 

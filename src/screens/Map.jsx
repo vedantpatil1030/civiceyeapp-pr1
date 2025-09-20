@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 
 import {
   StyleSheet,
@@ -11,6 +11,8 @@ import {
   useColorScheme,
   Modal,
   Dimensions,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LeafletView } from 'react-native-leaflet-view';
 import AccountIcon from '../components/AccountIcon';
@@ -29,8 +31,67 @@ const MapScreen = ({ navigation }) => {
     const [modalVisible, setModalVisible] = useState(false);
     const [issues, setIssues] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [statistics, setStatistics] = useState({
+        open: 0,
+        inProgress: 0,
+        resolved: 0,
+        totalIssues: 0,
+        highPriority: 0,
+        citiesCovered: 0,
+    });
 
     const isDarkMode = useColorScheme() === 'dark';
+
+    // Calculate statistics from issues
+    const calculateStatistics = (issuesData) => {
+        const stats = {
+            open: 0,
+            inProgress: 0,
+            resolved: 0,
+            totalIssues: issuesData.length,
+            highPriority: 0,
+            citiesCovered: new Set(),
+        };
+
+        issuesData.forEach(issue => {
+            // Count by status
+            switch (issue.status) {
+                case 'OPEN':
+                    stats.open++;
+                    break;
+                case 'IN_PROGRESS':
+                case 'ASSIGNED_DEPT':
+                case 'ASSIGNED_STAFF':
+                    stats.inProgress++;
+                    break;
+                case 'RESOLVED':
+                case 'COMPLETED':
+                case 'VERIFIED':
+                    stats.resolved++;
+                    break;
+            }
+
+            // Count high priority issues
+            if (issue.priority === 'HIGH') {
+                stats.highPriority++;
+            }
+
+            // Count unique cities
+            if (issue.location) {
+                const city = typeof issue.location === 'string' 
+                    ? issue.location.split(',')[1]?.trim()
+                    : issue.location.city;
+                if (city) {
+                    stats.citiesCovered.add(city);
+                }
+            }
+        });
+
+        return {
+            ...stats,
+            citiesCovered: stats.citiesCovered.size
+        };
+    };
     const { width, height } = Dimensions.get('window');
 
     const backgroundStyle = {
@@ -51,40 +112,140 @@ const MapScreen = ({ navigation }) => {
 
     // Fetch all issues from backend
     useEffect(() => {
-        const fetchIssues = async () => {
-            setLoading(true);
+        let isMounted = true;
+        const fetchIssues = async (retryCount = 0) => {
             try {
+                if (!isMounted) return;
+                setLoading(true);
+                
+                // First check if we have a token
                 const token = await AsyncStorage.getItem('accessToken');
                 if (!token) {
-                    Alert.alert('Error', 'Please login to view issues');
-                    setLoading(false);
-                    return;
+                    throw new Error('No auth token available');
                 }
                 
-                const res = await axios.get('http://10.0.2.2:8000/api/v1/issues/all', {
-                    headers: { 
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json'
+                const response = await api.get('/api/v1/issues/all', {
+                    timeout: 15000, // Increased timeout to 15 seconds
+                    headers: {
+                        'Authorization': `Bearer ${token}`
                     }
                 });
-                const data = res.data?.data?.issues || [];
-                if (!Array.isArray(data)) {
-                    console.error('Invalid data format received:', res.data);
-                    throw new Error('Invalid data format received from server');
+                
+                console.log('Debug - Map API Response:', {
+                    status: response.status,
+                    dataLength: response.data?.data?.length || 0,
+                    data: response.data
+                });
+
+                if (!response.data?.data) {
+                    throw new Error('Invalid response format from server');
                 }
-                setIssues(data);
+
+                const issuesData = response.data.data;
+                console.log('Received issues data:', {
+                    count: issuesData.length,
+                    sample: issuesData[0],
+                    hasCoordinates: issuesData.every(issue => issue.latitude && issue.longitude)
+                });
+                
+                // Filter out issues without valid coordinates
+                const validIssues = issuesData.filter(issue => 
+                    issue.latitude && 
+                    issue.longitude && 
+                    !isNaN(issue.latitude) && 
+                    !isNaN(issue.longitude)
+                );
+                
+                if (validIssues.length < issuesData.length) {
+                    console.warn(`Filtered out ${issuesData.length - validIssues.length} issues with invalid coordinates`);
+                }
+                
+                setIssues(validIssues);
+                // Calculate and set statistics
+                setStatistics(calculateStatistics(validIssues));
             } catch (err) {
-                console.error('Error fetching issues:', err?.response?.data || err);
-                Alert.alert('Error', 'Failed to load issues. Please try again.');
+                // Enhanced error logging with network details
+                console.error('Error fetching issues:', {
+                    message: err.message,
+                    response: err.response?.data,
+                    status: err.response?.status,
+                    url: err.config?.url,
+                    method: err.config?.method,
+                    headers: err.config?.headers,
+                    networkError: !err.response,
+                    timeout: err.code === 'ECONNABORTED',
+                    requestData: err.config?.data
+                });
+
+                // Log the full error for debugging
+                console.log('Full error object:', JSON.stringify(err, null, 2));
+
+                // Implement retry logic for network errors
+                if (retryCount < 3 && (!err.response || err.code === 'ECONNABORTED')) {
+                    console.log(`Retrying request (attempt ${retryCount + 1}/3)...`);
+                    setTimeout(() => fetchIssues(retryCount + 1), 1000 * (retryCount + 1));
+                    return;
+                }
+
+                Alert.alert(
+                    'Error',
+                    'Failed to load issues. Please check your internet connection and try again.',
+                    [
+                        {
+                            text: 'Retry',
+                            onPress: () => fetchIssues(0)
+                        },
+                        {
+                            text: 'OK',
+                            style: 'cancel'
+                        }
+                    ]
+                );
+
+                // Handle token expiration or invalid token
+                if (err.response?.status === 401) {
+                    await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+                    Alert.alert(
+                        'Session Expired', 
+                        'Please login again to continue.',
+                        [
+                            { 
+                                text: 'OK', 
+                                onPress: () => navigation.reset({
+                                    index: 0,
+                                    routes: [{ name: 'Login' }]
+                                })
+                            }
+                        ]
+                    );
+                    return;
+                }
+
+                // Handle network errors
+                if (!err.response) {
+                    Alert.alert('Network Error', 'Please check your internet connection and try again.');
+                    setIssues([]);
+                    return;
+                }
+
+                // Handle other errors
+                const errorMessage = err.response?.data?.message || 'Failed to load issues. Please try again.';
+                Alert.alert('Error', errorMessage);
                 setIssues([]);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
         fetchIssues();
 
         // Refresh data every 30 seconds
         const interval = setInterval(fetchIssues, 30000);
-        return () => clearInterval(interval);
+        
+        // Cleanup function
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
     }, []);
 
     // Filter issues based on selected filter
@@ -266,8 +427,22 @@ const MapScreen = ({ navigation }) => {
                 const issue = filteredIssues.find(issue => issue.id.toString() === markerId);
                 if (issue) {
                     console.log('Found issue:', issue.title);
-                    setSelectedIssue(issue);
-                    setModalVisible(true);
+                    try {
+                        // Verify issue data is valid before showing modal
+                        if (!issue || !issue._id) {
+                            throw new Error('Invalid issue data');
+                        }
+                        
+                        setSelectedIssue(issue);
+                        setModalVisible(true);
+                    } catch (error) {
+                        console.error('Error handling marker click:', error);
+                        Alert.alert(
+                            'Error',
+                            'Failed to load issue details. Please try again.',
+                            [{ text: 'OK' }]
+                        );
+                    }
                 } else {
                     console.log('No issue found for marker ID:', markerId);
                 }
@@ -333,15 +508,17 @@ const MapScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={[styles.container, backgroundStyle]}>
-            {/* Account Icon */}
-            <AccountIcon />
-            
             {/* Header */}
             <View style={styles.header}>
-                <Text style={[styles.title, { color: textColor }]}>🗺️ India Civic Issues Map</Text>
-                <Text style={[styles.subtitle, { color: textColor }]}>
-                    Interactive map showing civic issues across major cities
-                </Text>
+                <View style={styles.headerContent}>
+                    <Text style={[styles.title, { color: textColor }]}>🗺️ India Civic Issues Map</Text>
+                    <Text style={[styles.subtitle, { color: textColor }]}>
+                        Interactive map showing civic issues across major cities
+                    </Text>
+                </View>
+                <View style={styles.headerRight}>
+                    <AccountIcon />
+                </View>
             </View>
 
             {/* Filters */}
@@ -401,44 +578,40 @@ const MapScreen = ({ navigation }) => {
             <View style={styles.statisticsSection}>
                 <Text style={[styles.sectionTitle, { color: textColor }]}>📊 Issue Analytics Dashboard</Text>
                 <View style={styles.statsGrid}>
-                    <View style={[styles.statCard, { backgroundColor: '#ffebee' }]}>
-                        <Text style={styles.statNumber}>{getStatsByStatus('open').count}</Text>
-                        <Text style={styles.statLabel}>🔴 Open Issues</Text>
-                        <Text style={styles.statSubtext}>Needs Attention</Text>
+                    <View style={[styles.statCard, { backgroundColor: isDarkMode ? '#3A2A2A' : '#ffebee' }]}>
+                        <Text style={[styles.statNumber, { color: isDarkMode ? '#FF6B6B' : '#d32f2f' }]}>{statistics.open}</Text>
+                        <Text style={[styles.statLabel, { color: textColor }]}>🔴 Open Issues</Text>
+                        <Text style={[styles.statSubtext, { color: isDarkMode ? '#B0B0B0' : '#666666' }]}>Needs Attention</Text>
                     </View>
-                    <View style={[styles.statCard, { backgroundColor: '#fff3e0' }]}>
-                        <Text style={styles.statNumber}>{getStatsByStatus('in-progress').count}</Text>
-                        <Text style={styles.statLabel}>🟡 In Progress</Text>
-                        <Text style={styles.statSubtext}>Being Resolved</Text>
+                    <View style={[styles.statCard, { backgroundColor: isDarkMode ? '#3A3A2A' : '#fff3e0' }]}>
+                        <Text style={[styles.statNumber, { color: isDarkMode ? '#FFB74D' : '#f57c00' }]}>{statistics.inProgress}</Text>
+                        <Text style={[styles.statLabel, { color: textColor }]}>🟡 In Progress</Text>
+                        <Text style={[styles.statSubtext, { color: isDarkMode ? '#B0B0B0' : '#666666' }]}>Being Resolved</Text>
                     </View>
-                    <View style={[styles.statCard, { backgroundColor: '#e8f5e8' }]}>
-                        <Text style={styles.statNumber}>{getStatsByStatus('resolved').count}</Text>
-                        <Text style={styles.statLabel}>🟢 Resolved</Text>
-                        <Text style={styles.statSubtext}>Completed</Text>
+                    <View style={[styles.statCard, { backgroundColor: isDarkMode ? '#2A3A2A' : '#e8f5e8' }]}>
+                        <Text style={[styles.statNumber, { color: isDarkMode ? '#81C784' : '#388e3c' }]}>{statistics.resolved}</Text>
+                        <Text style={[styles.statLabel, { color: textColor }]}>🟢 Resolved</Text>
+                        <Text style={[styles.statSubtext, { color: isDarkMode ? '#B0B0B0' : '#666666' }]}>Completed</Text>
                     </View>
                 </View>
                 
                 {/* Additional Stats */}
-                <View style={styles.additionalStats}>
+                <View style={[styles.additionalStats, { backgroundColor: isDarkMode ? '#2C2C2E' : '#f5f5f5' }]}>
                     <View style={styles.statRow}>
                         <Text style={[styles.statRowLabel, { color: textColor }]}>📈 Total Issues:</Text>
-                        <Text style={[styles.statRowValue, { color: textColor }]}>{issues.length}</Text>
+                        <Text style={[styles.statRowValue, { color: textColor }]}>{statistics.totalIssues}</Text>
                     </View>
                     <View style={styles.statRow}>
                         <Text style={[styles.statRowLabel, { color: textColor }]}>🔍 Currently Viewing:</Text>
-                        <Text style={[styles.statRowValue, { color: textColor }]}>{filteredIssues.length}</Text>
+                        <Text style={[styles.statRowValue, { color: textColor }]}>{filteredIssues?.length || statistics.totalIssues}</Text>
                     </View>
                     <View style={styles.statRow}>
                         <Text style={[styles.statRowLabel, { color: textColor }]}>🏙️ Cities Covered:</Text>
-                        <Text style={[styles.statRowValue, { color: textColor }]}>
-                            {[...new Set(issues.map(issue => (issue.location && typeof issue.location === 'string') ? issue.location.split(',')[1]?.trim() : ''))].filter(Boolean).length}
-                        </Text>
+                        <Text style={[styles.statRowValue, { color: textColor }]}>{statistics.citiesCovered}</Text>
                     </View>
                     <View style={styles.statRow}>
                         <Text style={[styles.statRowLabel, { color: textColor }]}>⚡ High Priority:</Text>
-                        <Text style={[styles.statRowValue, { color: '#ff4757' }]}>
-                            {filteredIssues.filter(issue => issue.priority === 'high').length}
-                        </Text>
+                        <Text style={[styles.statRowValue, { color: isDarkMode ? '#FF6B6B' : '#ff4757' }]}>{statistics.highPriority}</Text>
                     </View>
                 </View>
             </View>
@@ -571,6 +744,75 @@ const MapScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+    // Statistics Section Styles
+    statisticsSection: {
+        padding: 16,
+        marginBottom: 20,
+    },
+    sectionTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 16,
+        letterSpacing: 0.3,
+    },
+    statsGrid: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 20,
+        gap: 12,
+    },
+    statCard: {
+        flex: 1,
+        padding: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.05)',
+    },
+    statNumber: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginBottom: 8,
+    },
+    statLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    statSubtext: {
+        fontSize: 12,
+        textAlign: 'center',
+    },
+    additionalStats: {
+        backgroundColor: 'rgba(0,0,0,0.03)',
+        borderRadius: 12,
+        padding: 16,
+        marginTop: 8,
+    },
+    statRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(0,0,0,0.05)',
+    },
+    statRowLabel: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    statRowValue: {
+        fontSize: 14,
+        fontWeight: '600',
+    },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -596,10 +838,29 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     header: {
-        padding: 12,
-        alignItems: 'center',
-        borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
+    paddingTop: 24,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#bcbcd7ff',
+    borderBottomWidth: 2,
+    borderBottomColor: '#48484A',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    // Add gradient-like effect with subtle border
+    borderTopWidth: 1,
+    borderTopColor: '#7A7A85',
+  },
+    headerContent: {
+        flex: 1,
+    },
+    headerRight: {
+        marginLeft: 16,
     },
     title: {
         fontSize: 20,
@@ -607,8 +868,8 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     subtitle: {
-        fontSize: 12,
-        opacity: 0.7,
+        fontSize: 14,
+        opacity: 0.8,
     },
     filtersSection: {
         padding: 10,
