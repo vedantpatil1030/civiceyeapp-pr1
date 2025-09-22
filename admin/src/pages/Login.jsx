@@ -58,6 +58,7 @@ const Login = () => {
       // Assuming loginRes.data contains token and user info
       const { accessToken, refreshToken, user } = loginRes.data.data;
 
+
       // Store tokens in cookies (expires: 1 day for access, 7 days for refresh)
       Cookies.set("accessToken", accessToken, {
         expires: 1,
@@ -72,9 +73,22 @@ const Login = () => {
         path: "/"
       });
 
-  // Save token/user as needed (e.g., in context or localStorage)
-  login();
-  navigate("/");
+      // Store accessToken in localStorage as 'token' for department dashboard API calls
+      localStorage.setItem("token", accessToken);
+
+      // Save department name for dashboard API calls (if department admin)
+      if (role === "DEPARTMENT_ADMIN" && user?.department) {
+        localStorage.setItem("departmentName", user.department.name || user.department);
+      }
+
+      // Save token/user as needed (e.g., in context or localStorage)
+      login();
+      // Route to department dashboard if department admin, else home
+      if (role === "DEPARTMENT_ADMIN") {
+        navigate("/department-dashboard");
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       console.log('Error during OTP verification or login:', err);
       setError(err.response?.data?.message || 'Invalid OTP or login failed');

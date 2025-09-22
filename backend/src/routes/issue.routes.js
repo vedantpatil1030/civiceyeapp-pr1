@@ -115,7 +115,7 @@ router.route("/issues/:issueId/staff").get(
 );
 
 //TO get assign staff to particular issue
-router.route("/issues/:issueId/assign-staff").get(
+router.route("/issues/:issueId/assign-staff").post(
     verifyJWT,
     assignStaff
 );

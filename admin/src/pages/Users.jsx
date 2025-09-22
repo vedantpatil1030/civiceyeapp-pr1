@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiEdit2, FiTrash2, FiUserPlus, FiSearch } from 'react-icons/fi';
+import { FiTrash2, FiUserPlus, FiSearch, FiEdit2 } from 'react-icons/fi';
 import { useToast } from '../hooks/useToast';
 import api from '../config/axios';
 import Cookies from 'js-cookie';
@@ -11,7 +11,7 @@ const Users = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
+  // const [editingUser, setEditingUser] = useState(null);
   const toast = useToast();
 
   // 🔹 Fetch users from backend
@@ -200,12 +200,12 @@ const Users = () => {
                 <td className="px-6 py-4">{user.role || 'N/A'}</td>
                 <td className="px-6 py-4">{formatDate(user.createdAt)}</td>
                 <td className="px-6 py-4 text-center flex gap-2 justify-center">
-                  <button
+                  {/* <button
                     onClick={() => setEditingUser(user)}
                     className="text-blue-500 hover:text-blue-700"
-                  >
-                    <FiEdit2 />
-                  </button>
+                  > */}
+                    {/* <FiEdit2 />
+                  </button> */}
                   <button
                     onClick={() => handleDeleteUser(user._id)}
                     className="text-red-500 hover:text-red-700"
@@ -220,25 +220,13 @@ const Users = () => {
       </div>
 
       {/* Add/Edit User Modal */}
-      {(showAddModal || editingUser) && (
+      {showAddModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
           <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
-            <h2 className="text-2xl font-bold mb-6">
-              {editingUser ? 'Edit User' : 'Add New User'}
-            </h2>
+            <h2 className="text-2xl font-bold mb-6">Add New User</h2>
             <UserForm
-              initialData={editingUser}
-              onSubmit={(data) => {
-                if (editingUser) {
-                  handleEditUser(editingUser._id, data);
-                } else {
-                  handleAddUser(data);
-                }
-              }}
-              onCancel={() => {
-                setShowAddModal(false);
-                setEditingUser(null);
-              }}
+              onSubmit={handleAddUser}
+              onCancel={() => setShowAddModal(false)}
             />
           </div>
         </div>
