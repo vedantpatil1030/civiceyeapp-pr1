@@ -1,9 +1,12 @@
 import express from 'express';
 import cors from 'cors';
+import dotenv from "dotenv"
 import cookieParser from 'cookie-parser';
 
 const app = express();
-
+dotenv.config({
+    path: './.env'
+})
 app.use(cors({
     origin: ['http://localhost:8081', 'http://10.0.2.2:8081'],
     credentials: true,

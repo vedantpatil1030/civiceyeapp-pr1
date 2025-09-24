@@ -45,11 +45,11 @@ api.interceptors.response.use(
             originalRequest._retry = true;
             try {
                 console.log('🔄 Attempting to refresh token...');
-                const newTokens = await refreshTokens();
-                if (newTokens?.accessToken) {
+                const newAccessToken = await refreshTokens();
+                if (newAccessToken) {
                     console.log('✅ Token refreshed successfully');
                     // Update the failed request with new token
-                    originalRequest.headers.Authorization = `Bearer ${newTokens.accessToken}`;
+                    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
                     return api(originalRequest);
                 } else {
                     console.log('❌ Token refresh failed - no new token received');

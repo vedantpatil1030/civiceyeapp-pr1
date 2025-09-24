@@ -15,25 +15,25 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const authStatus = localStorage.getItem('isAuthenticated');
-    if (authStatus === 'true') {
+    // Check for token in cookies or localStorage for persistent login
+    const token = localStorage.getItem('accessToken');
+    if (token) {
       setIsAuthenticated(true);
     }
     setLoading(false);
   }, []);
 
-  const login = (username, password) => {
-    if (username === 'admin' && password === 'admin') {
-      setIsAuthenticated(true);
-      localStorage.setItem('isAuthenticated', 'true');
-      return true;
-    }
-    return false;
+  // login now just sets isAuthenticated true and stores a flag
+  const login = () => {
+    setIsAuthenticated(true);
+    localStorage.setItem('isAuthenticated', 'true');
   };
 
   const logout = () => {
     setIsAuthenticated(false);
     localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
   };
 
   return (

@@ -7,6 +7,7 @@ import Issues from './pages/Issues';
 import Departments from './pages/Departments';
 import DashboardLayout from './components/layout/DashBoardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
+import IssueDetails from './pages/IssueDetails';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="users" element={<Users />} />
             <Route path="issues" element={<Issues />} />
+            <Route path="issues/:issueId" element={<IssueDetails />} />
             <Route path="departments" element={<Departments />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

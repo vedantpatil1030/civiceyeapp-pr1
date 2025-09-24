@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import api from '../../services/api';
+import axios from 'axios';
 
 const LoginScreen = () => {
   const [phone, setPhone] = useState('');
@@ -33,13 +33,9 @@ const LoginScreen = () => {
 
     setLoading(true);
     try {
-      // First check if we can connect to the server
-      await api.get('/health', { timeout: 5000 });
-      // Ensure phone number is a string and remove any spaces
-      const formattedPhone = phone.toString().trim();
-      console.log('📞 Checking if user exists:', formattedPhone);
-      const response = await api.post("/users/check-login", {
-        mobileNumber: formattedPhone
+      console.log('📞 Checking if user exists:', phone);
+      const response = await axios.post("http://10.0.2.2:8000/api/v1/users/check-login", {
+        mobileNumber: phone
       });
 
       console.log('✅ User check response:', response.data);
@@ -58,21 +54,18 @@ const LoginScreen = () => {
         );
       }
     } catch (error) {
-      console.log('❌ User check error:', error.response?.data?.message || error.message);
+      console.error('❌ User check error:', error);
       if (error.response?.status === 404) {
-        // This is an expected error when user is not registered
         Alert.alert(
-          'Registration Required', 
-          'This mobile number is not registered. Would you like to create a new account?',
+          'User Not Found', 
+          'No account found with this mobile number. Please register first.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Register Now', onPress: () => navigation.navigate('Register') }
+            { text: 'Register', onPress: () => navigation.navigate('Register') }
           ]
         );
       } else {
-        // Handle other types of errors
-        const errorMessage = error.response?.data?.message || 'Unable to connect to the server. Please check your internet connection.';
-        Alert.alert('Error', errorMessage);
+        Alert.alert('Error', error.response?.data?.message || 'Failed to verify user');
       }
     } finally {
       setLoading(false);
@@ -83,7 +76,7 @@ const LoginScreen = () => {
   const sendOtp = async () => {
     try {
       console.log('📨 Sending OTP to:', phone);
-      const response = await api.post("/otp/send", {
+      const response = await axios.post("http://10.0.2.2:8000/api/v1/otp/send", {
         mobileNumber: phone
       });
 
@@ -113,38 +106,32 @@ const LoginScreen = () => {
     try {
       // First verify OTP
       console.log('🔐 Verifying OTP:', otp);
-      const otpResponse = await api.post("/otp/verify", {
-        mobileNumber: phone.toString().trim(),
+      const otpResponse = await axios.post("http://10.0.2.2:8000/api/v1/otp/verify", {
+        mobileNumber: phone,
         verificationId: verificationId,
-        code: otp.toString().trim()
+        code: otp
       });
 
       console.log('✅ OTP verification response:', otpResponse.data);
 
-      // Check both statusCode and responseCode
-      if (otpResponse.data.responseCode === 200 || otpResponse.data.statusCode === 200) {
+      if (otpResponse.data.responseCode === 200) {
         // OTP verified, now login
         console.log('🔑 Logging in user:', phone);
-        const loginResponse = await api.post("/users/login", {
-          mobileNumber: phone,
-          verificationId: verificationId // Add verification ID to login request
+        const loginResponse = await axios.post("http://10.0.2.2:8000/api/v1/users/login", {
+          mobileNumber: phone
         });
 
         console.log('✅ Login response:', loginResponse.data);
 
-        // Check both statusCode and responseCode
-        if (loginResponse.data.statusCode === 200 || loginResponse.data.responseCode === 200) {
+        if (loginResponse.data.statusCode === 200) {
           const { user, accessToken, refreshToken } = loginResponse.data.data;
           
-          // Store tokens and minimal user data using authService
+          // Store tokens and minimal user data for persistent login
+          await AsyncStorage.setItem('accessToken', accessToken);
+          await AsyncStorage.setItem('refreshToken', refreshToken);
           const minimalUser = { _id: user._id, fullName: user.fullName, role: user.role };
-          const saveResult = await saveTokens(accessToken, refreshToken, minimalUser);
-          
-          if (!saveResult) {
-            throw new Error('Failed to save login information');
-          }
+          await AsyncStorage.setItem('user', JSON.stringify(minimalUser));
 
-          console.log('✅ Login data saved successfully');
           Alert.alert('Login Successful', 'Welcome back!', [
             { text: 'OK', onPress: () => navigation.reset({
                 index: 0,
@@ -162,9 +149,9 @@ const LoginScreen = () => {
       console.error('❌ Login error:', error);
       Alert.alert('Error', error.response?.data?.message || 'Login failed');
     } finally {
-    setLoading(false);
-  }
-};
+      setLoading(false);
+    }
+  };
 
   // Resend OTP
   const resendOtp = async () => {
@@ -375,4 +362,3 @@ const getStyles = (isDark) => StyleSheet.create({
 });
 
 export default LoginScreen;
-

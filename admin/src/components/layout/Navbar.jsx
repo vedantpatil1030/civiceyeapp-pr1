@@ -11,30 +11,34 @@ const Navbar = ({ onMenuClick }) => {
   };
 
   return (
-    <header className="bg-white shadow-lg">
+    <header className="bg-gradient-to-r from-blue-600 to-purple-600 shadow-lg">
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center">
           <button
             onClick={onMenuClick}
-            className="text-gray-500 focus:outline-none lg:hidden"
+            className="text-white focus:outline-none lg:hidden"
+            aria-label="Open menu"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <h2 className="text-xl font-semibold text-gray-800 ml-4">Admin Dashboard</h2>
+          <h2 className="text-2xl font-bold text-white ml-4 drop-shadow-lg tracking-wide">
+            Welcome to Municipal Admin Dashboard
+          </h2>
         </div>
-        
+
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-              A
+          <div className="flex items-center space-x-2 bg-white rounded-full px-3 py-1 shadow">
+            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg border-2 border-white">
+              M
             </div>
-            <span className="text-gray-700 font-medium">Admin</span>
+            <span className="text-gray-800 font-semibold text-base"></span>
           </div>
           <button
             onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium transition duration-200"
+            className="bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-md text-base font-semibold shadow transition duration-200"
+            title="Logout"
           >
             Logout
           </button>
