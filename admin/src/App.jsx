@@ -6,6 +6,7 @@ import Users from './pages/Users';
 import Issues from './pages/Issues';
 import Departments from './pages/Departments';
 import DashboardLayout from './components/Layout/DashboardLayout';
+import DepartmentDashboard from './pages/DepartmentDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import IssueDetails from './pages/IssueDetails';
 
@@ -26,6 +27,7 @@ function App() {
             <Route path="issues/:issueId" element={<IssueDetails />} />
             <Route path="departments" element={<Departments />} />
           </Route>
+          <Route path="/department-dashboard" element={<DepartmentDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
