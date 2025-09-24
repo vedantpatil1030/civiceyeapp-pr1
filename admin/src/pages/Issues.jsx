@@ -1,3 +1,4 @@
+
 // /src/pages/Issues.jsx
 import React, { useState, useEffect } from "react";
 import axios from "axios";
@@ -25,6 +26,13 @@ import { API_BASE_URL } from "../config/api";
  * - Improved user experience with proper loading management
  */
 
+import { useState, useEffect } from "react";
+import { useToast } from "../hooks/useToast";
+import axios from "axios";
+import { FiEdit2, FiTrash2, FiFilter, FiSearch } from "react-icons/fi";
+import { API_BASE_URL } from "../config/api";
+
+
 const Issues = () => {
   const toast = useToast();
 
@@ -33,12 +41,18 @@ const Issues = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+
   // filters/search
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
 
   // selection
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+
   const [selectedIssue, setSelectedIssue] = useState(null);
 
   // Global loading state to prevent multiple simultaneous operations
@@ -101,12 +115,34 @@ const Issues = () => {
         const msg = err.response?.data?.message || "Failed to fetch issues";
         setError(msg);
         toast.error(msg);
+
+  // Fetch issues from backend
+  useEffect(() => {
+    const fetchIssues = async () => {
+      try {
+        setLoading(true);
+        const token = localStorage.getItem("token");
+        const response = await axios.get(
+          `${API_BASE_URL}/issues/getAllIssues`,
+          {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }
+        );
+        // Your backend returns { data: [ ...issues ] }
+        setIssues(response.data.data || []);
+      } catch (err) {
+        const errorMsg =
+          err.response?.data?.message || "Failed to fetch issues";
+        setError(errorMsg);
+        toast.error(errorMsg);
+
       } finally {
         setLoading(false);
       }
     };
 
     fetchIssues();
+
   }, []); // Only run once on mount
 
   // -----------------------
@@ -191,12 +227,24 @@ const Issues = () => {
     } finally {
       setGlobalLoading(false);
     }
+
+  }, []);
+
+  const handleUpdateStatus = (issueId, newStatus) => {
+    setIssues(
+      issues.map((issue) =>
+        issue._id === issueId ? { ...issue, status: newStatus.toUpperCase() } : issue
+      )
+    );
+    toast.success("Issue status updated successfully");
+
   };
 
   // -----------------------
   // Delete (client-side only)
   // -----------------------
   const handleDeleteIssue = (issueId) => {
+
     if (!window.confirm("Are you sure you want to delete this issue?") || globalLoading) return;
     setIssues((prev) => prev.filter((issue) => issue._id !== issueId));
     toast.success("Issue deleted successfully (locally)");
@@ -411,6 +459,61 @@ const Issues = () => {
         { headers: token ? { Authorization: `Bearer ${token}` } : {} }
       );
 
+    if (!window.confirm("Are you sure you want to delete this issue?")) return;
+    setIssues(issues.filter((issue) => issue._id !== issueId));
+    toast.success("Issue deleted successfully");
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      reported: "bg-yellow-100 text-yellow-800",
+      verified: "bg-green-100 text-green-800",
+      completed: "bg-blue-100 text-blue-800",
+      "in-progress": "bg-purple-100 text-purple-800",
+      pending: "bg-gray-100 text-gray-800",
+    };
+    return colors[status?.toLowerCase()] || "bg-gray-100 text-gray-800";
+  };
+
+  const getPriorityColor = (priority) => {
+    const colors = {
+      high: "text-red-600",
+      medium: "text-yellow-600",
+      low: "text-green-600",
+    };
+    return colors[priority?.toLowerCase()] || "text-gray-600";
+  };
+
+  const filteredIssues = issues.filter((issue) => {
+    const matchesSearch =
+      issue.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      issue.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      issue.location?.address
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase());
+
+    const matchesStatus =
+      statusFilter === "all" ||
+      issue.status?.toLowerCase() === statusFilter.toLowerCase();
+
+    const matchesPriority =
+      priorityFilter === "all" ||
+      issue.priority?.toLowerCase() === priorityFilter.toLowerCase();
+
+    return matchesSearch && matchesStatus && matchesPriority;
+  });
+ 
+
       toast.success("Complaint submitted successfully");
       setShowComplaintModal(false);
       setComplaintReason("");
@@ -435,7 +538,10 @@ const Issues = () => {
 
   if (error) {
     return (
-      <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert">
+      <div
+        className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"
+        role="alert"
+      >
         <p className="font-bold">Error</p>
         <p>{error}</p>
       </div>
@@ -531,14 +637,41 @@ const Issues = () => {
                 <tr key={issue._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col">
+
                       <div className="text-sm font-medium text-gray-900">{issue.title || "No Title"}</div>
                       <div className="text-sm text-gray-500">{issue.description ? `${issue.description.substring(0, 100)}...` : "No description available"}</div>
                     </div>
+
+                      <div className="text-sm font-medium text-gray-900">
+                        {issue.title || "No Title"}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {issue.description
+                          ? `${issue.description.substring(0, 100)}...`
+                          : "No description available"}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {issue.location?.address || "No Address"}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span
+                      className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
+                        issue.status || "reported"
+                      )}`}
+                    >
+                      {issue.status || "Reported"}
+                    </span>
+
                   </td>
 
                   <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm text-gray-900">{issue.location?.address || "No Address"}</div></td>
 
                   <td className="px-6 py-4 whitespace-nowrap">
+
                     <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(issue.status || "REPORTED")}`}>
                       {issue.status || "REPORTED"}
                     </span>
@@ -554,6 +687,23 @@ const Issues = () => {
                   <td className="px-6 py-4 whitespace-nowrap">{issue.deadline ? formatDate(issue.deadline) : "-"}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{issue.reportedBy?.email || "Unknown"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(issue.createdAt)}</td>
+
+        <span
+                      className={`text-sm font-medium ${getPriorityColor(
+                        issue.priority || "low"
+                      )}`}
+                    >
+                      {issue.priority || "Low"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">
+                      {issue.reportedBy?.email || "Unknown"}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatDate(issue.createdAt)}
+                  </td>
 
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-center space-x-3">
@@ -588,6 +738,7 @@ const Issues = () => {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-lg shadow-xl max-w-3xl w-full">
             <div className="flex justify-between items-start mb-6">
+
               <h2 className="text-2xl font-bold text-blue-800 flex items-center gap-2"><FiFileText className="w-6 h-6" /> Issue Details</h2>
               <button onClick={() => setSelectedIssue(null)} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
             </div>
@@ -683,9 +834,42 @@ const Issues = () => {
                   >
                     <FiAlertCircle />Complain
                   </button>
+
+              <h2 className="text-2xl font-bold text-gray-800">
+                Issue Details
+              </h2>
+              <button
+                onClick={() => setSelectedIssue(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Status</h3>
+                <div className="mt-2 flex gap-2">
+                  {["reported", "verified", "completed"].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() =>
+                        handleUpdateStatus(selectedIssue._id, status)
+                      }
+                      className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        selectedIssue.status?.toLowerCase() === status
+                          ? getStatusColor(status)
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </button>
+                  ))}
+
                 </div>
               </div>
             </div>
+
 
             {selectedIssue.images && selectedIssue.images.length > 0 && (
               <div className="mt-6">
@@ -694,9 +878,47 @@ const Issues = () => {
                   {selectedIssue.images.map((image, idx) => (
                     <img key={idx} src={image} alt={`Issue ${idx + 1}`} className="h-24 w-full object-cover rounded-lg border" />
                   ))}
+
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Issue Information
+                  </h3>
+                  <dl className="mt-2 space-y-2">
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">
+                        Title
+                      </dt>
+                      <dd className="text-sm text-gray-900">
+                        {selectedIssue.title}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">
+                        Description
+                      </dt>
+                      <dd className="text-sm text-gray-900">
+                        {selectedIssue.description}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">
+                        Priority
+                      </dt>
+                      <dd
+                        className={`text-sm font-medium ${getPriorityColor(
+                          selectedIssue.priority
+                        )}`}
+                      >
+                        {selectedIssue.priority}
+                      </dd>
+                    </div>
+                  </dl>
+
                 </div>
               </div>
             )}
+
 
             <div className="mt-8 flex justify-end">
               <button onClick={() => setSelectedIssue(null)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md">Close</button>
@@ -846,11 +1068,35 @@ const Issues = () => {
                     <div key={idx} className="bg-gray-100 rounded p-2">
                       <div className="text-sm text-gray-800">{c.text || c.comment || c}</div>
                       <div className="text-xs text-gray-500 mt-1">{c.author?.email || c.author || c.user?.email || "Anonymous"} {c.createdAt ? `· ${new Date(c.createdAt).toLocaleString()}` : ""}</div>
+
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Location Details
+                  </h3>
+                  <dl className="mt-2 space-y-2">
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">
+                        Address
+                      </dt>
+                      <dd className="text-sm text-gray-900">
+                        {selectedIssue.location?.address || "No Address"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">
+                        Coordinates
+                      </dt>
+                      <dd className="text-sm text-gray-900">
+                        {selectedIssue.location?.coordinates?.join(", ") ||
+                          "N/A"}
+                      </dd>
+
                     </div>
                   ))
                 )}
               </div>
             )}
+
 
             <form className="flex gap-2 mt-2" onSubmit={handleAddComment}>
               <input 
@@ -897,6 +1143,23 @@ const Issues = () => {
                     )}
                     {proof.uploadedBy && <div className="text-xs text-gray-500">Submitted by: {proof.uploadedBy.email || proof.uploadedBy}</div>}
                     {proof.createdAt && <div className="text-xs text-gray-400">{new Date(proof.createdAt).toLocaleString()}</div>}
+
+              {selectedIssue.images && selectedIssue.images.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Issue Images
+                  </h3>
+                  <div className="mt-2 grid grid-cols-3 gap-4">
+                    {selectedIssue.images.map((image, index) => (
+                      <div key={index} className="relative">
+                        <img
+                          src={image}
+                          alt={`Issue ${index + 1}`}
+                          className="h-24 w-full object-cover rounded-lg"
+                        />
+                      </div>
+                    ))}
+
                   </div>
                 ))
               )}

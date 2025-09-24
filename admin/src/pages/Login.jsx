@@ -59,6 +59,8 @@ const Login = () => {
       const { accessToken, refreshToken, user } = loginRes.data.data;
 
 
+
+
       // Store tokens in cookies (expires: 1 day for access, 7 days for refresh)
       Cookies.set("accessToken", accessToken, {
         expires: 1,
@@ -72,6 +74,7 @@ const Login = () => {
         sameSite: "strict",
         path: "/"
       });
+
 
       // Store accessToken in localStorage as 'token' for department dashboard API calls
       localStorage.setItem("token", accessToken);
@@ -89,6 +92,12 @@ const Login = () => {
       } else {
         navigate("/");
       }
+
+
+  // Save token/user as needed (e.g., in context or localStorage)
+  login();
+  navigate("/");
+
     } catch (err) {
       console.log('Error during OTP verification or login:', err);
       setError(err.response?.data?.message || 'Invalid OTP or login failed');

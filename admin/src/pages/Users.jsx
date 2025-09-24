@@ -200,12 +200,21 @@ const Users = () => {
                 <td className="px-6 py-4">{user.role || 'N/A'}</td>
                 <td className="px-6 py-4">{formatDate(user.createdAt)}</td>
                 <td className="px-6 py-4 text-center flex gap-2 justify-center">
+
                   {/* <button
                     onClick={() => setEditingUser(user)}
                     className="text-blue-500 hover:text-blue-700"
                   > */}
                     {/* <FiEdit2 />
                   </button> */}
+
+                  <button
+                    onClick={() => setEditingUser(user)}
+                    className="text-blue-500 hover:text-blue-700"
+                  >
+                    <FiEdit2 />
+                  </button>
+
                   <button
                     onClick={() => handleDeleteUser(user._id)}
                     className="text-red-500 hover:text-red-700"
