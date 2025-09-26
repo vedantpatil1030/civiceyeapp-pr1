@@ -58,23 +58,42 @@ const Login = () => {
       // Assuming loginRes.data contains token and user info
       const { accessToken, refreshToken, user } = loginRes.data.data;
 
-      // Store tokens in cookies (expires: 1 day for access, 7 days for refresh)
+
+
+
+      // Store tokens in both localStorage and cookies
+      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("refreshToken", refreshToken);
       Cookies.set("accessToken", accessToken, {
         expires: 1,
+        path: '/',
         secure: true,
-        sameSite: "strict",
-        path: "/"
+        sameSite: 'Lax'
       });
-      Cookies.set("refreshToken", refreshToken, {
-        expires: 7,
-        secure: true,
-        sameSite: "strict",
-        path: "/"
-      });
+      
+      // Store user data
+      localStorage.setItem("user", JSON.stringify(user));
+      
+      // Debug log to verify token storage
+      console.log('Stored access token:', accessToken);
+      console.log('Token in localStorage:', localStorage.getItem('accessToken'));
+      console.log('Token in cookies:', Cookies.get('accessToken'));
 
-  // Save token/user as needed (e.g., in context or localStorage)
-  login();
-  navigate("/");
+      // Save department name for department admin
+      if (role === "DEPARTMENT_ADMIN" && user?.department) {
+        localStorage.setItem("departmentName", user.department.name || user.department);
+      }
+
+      // Update auth context with user info
+      login();
+
+      // Navigate based on role
+      if (role === "DEPARTMENT_ADMIN") {
+        navigate("/department-dashboard");
+      } else {
+        navigate("/");
+      }
+
     } catch (err) {
       console.log('Error during OTP verification or login:', err);
       setError(err.response?.data?.message || 'Invalid OTP or login failed');
@@ -84,36 +103,37 @@ const Login = () => {
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 p-3">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8 flex flex-col justify-center items-center">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-800">Admin/Department OTP Login</h2>
-          <p className="text-gray-600 mt-2">Sign in with your mobile number and OTP</p>
-        </div>
+    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-3 overflow-hidden">
+      <div className="relative w-[500px] h-[500px] flex justify-center items-center">
+        {/* Animated rings */}
+        <div className="absolute inset-0 border-2 border-white rounded-[38%_62%_63%_37%/41%_44%_56%_59%] animate-[spin_6s_linear_infinite] hover:border-[#00ff0a] hover:border-4 hover:shadow-[0_0_20px_#00ff0a]"></div>
+        <div className="absolute inset-0 border-2 border-white rounded-[41%_44%_56%_59%/38%_62%_63%_37%] animate-[spin_4s_linear_infinite] hover:border-[#ff0057] hover:border-4 hover:shadow-[0_0_20px_#ff0057]"></div>
+        <div className="absolute inset-0 border-2 border-white rounded-[41%_44%_56%_59%/38%_62%_63%_37%] animate-[reverse-spin_10s_linear_infinite] hover:border-[#fffd44] hover:border-4 hover:shadow-[0_0_20px_#fffd44]"></div>
+        
+        {/* Login form */}
+        <div className="w-[300px] flex flex-col justify-center items-center gap-5 z-10">
+          <h2 className="text-3xl font-bold text-white">Admin/Department OTP Login</h2>
+          <p className="text-white/75">Sign in with your mobile number and OTP</p>
 
         <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Login as</label>
+          <div className="w-full">
             <select
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-gray-800 bg-white"
+              className="w-full px-5 py-3 bg-transparent border-2 border-white rounded-full text-lg text-white focus:outline-none focus:border-[#00ff0a] focus:shadow-[0_0_20px_#00ff0a] transition-all"
               value={role}
               onChange={e => setRole(e.target.value)}
             >
-              <option value="DEPARTMENT_ADMIN" className="text-gray-800 bg-white">Department</option>
-              <option value="MUNICIPAL_ADMIN" className="text-gray-800 bg-white">Municipal Admin</option>
+              <option value="DEPARTMENT_ADMIN" className="text-gray-800">Department</option>
+              <option value="MUNICIPAL_ADMIN" className="text-gray-800">Municipal Admin</option>
             </select>
           </div>
 
-          <div>
-            <label htmlFor="mobile" className="block text-sm font-medium text-gray-700 mb-2">
-              Mobile Number
-            </label>
+          <div className="w-full">
             <input
               id="mobile"
               type="tel"
               value={mobile}
               onChange={e => setMobile(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              className="w-full px-5 py-3 bg-transparent border-2 border-white rounded-full text-lg text-white placeholder:text-white/75 focus:outline-none focus:border-[#ff0057] focus:shadow-[0_0_20px_#ff0057] transition-all"
               placeholder="Enter mobile number"
               required
               disabled={otpSent}
@@ -121,16 +141,13 @@ const Login = () => {
           </div>
 
           {otpSent && (
-            <div>
-              <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-2">
-                OTP
-              </label>
+            <div className="w-full">
               <input
                 id="otp"
                 type="text"
                 value={otp}
                 onChange={e => setOtp(e.target.value)}
-                className="w-full px-4 py-2 border #000000 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                className="w-full px-5 py-3 bg-transparent border-2 border-white rounded-full text-lg text-white placeholder:text-white/75 focus:outline-none focus:border-[#fffd44] focus:shadow-[0_0_20px_#fffd44] transition-all"
                 placeholder="Enter OTP"
                 required
               />
@@ -138,22 +155,25 @@ const Login = () => {
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+            <div className="w-full px-5 py-3 border-2 border-red-500 rounded-full text-red-500 text-center bg-red-500/10">
               {error}
             </div>
           )}
 
           <button
             type="submit"
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md transition duration-200"
+            className="w-full px-5 py-3 bg-gradient-to-r from-[#ff357a] to-[#fff172] text-white rounded-full text-lg font-medium hover:shadow-[0_0_20px_#ff357a] transition-all duration-300"
             disabled={loading}
           >
             {otpSent ? (loading ? 'Verifying...' : 'Login') : (loading ? 'Sending OTP...' : 'Send OTP')}
           </button>
+
+         
         </form>
       </div>
     </div>
+  </div>
   );
-};
+}
 
 export default Login;

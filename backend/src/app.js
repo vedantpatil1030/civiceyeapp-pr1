@@ -8,10 +8,13 @@ dotenv.config({
     path: './.env'
 })
 app.use(cors({
-    origin: ['http://localhost:8081', 'http://10.0.2.2:8081'],
+    origin: ['http://localhost:8081', 'http://10.0.2.2:8081', 'http://localhost:5173'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    exposedHeaders: ['Content-Type', 'Authorization'],
+    preflightContinue: true,
+    optionsSuccessStatus: 200
 }))
 
 app.use(express.json({limit: "16kb"}))

@@ -6,8 +6,10 @@ import Users from './pages/Users';
 import Issues from './pages/Issues';
 import Departments from './pages/Departments';
 import DashboardLayout from './components/layout/DashBoardLayout';
+import DepartmentDashboard from './pages/DepartmentDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import IssueDetails from './pages/IssueDetails';
+import MapView from './pages/MapView';
 
 function App() {
   return (
@@ -24,8 +26,11 @@ function App() {
             <Route path="users" element={<Users />} />
             <Route path="issues" element={<Issues />} />
             <Route path="issues/:issueId" element={<IssueDetails />} />
+            <Route path="map" element={<MapView />} />
             <Route path="departments" element={<Departments />} />
+            <Route path="department-dashboard" element={<DepartmentDashboard />} />
           </Route>
+          <Route path="/department-dashboard" element={<DepartmentDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>

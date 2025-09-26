@@ -80,8 +80,8 @@ router.route("/nearby").get(
     nearbyIssues
 );
 
-// Single route for getting all issues
-router.get("/all", verifyJWT, getAllIssues);
+// Public route for getting all issues
+router.get("/all", getAllIssues); // Removed verifyJWT to make it public
 
 //Get Issue By ID
 router.route("/issues/:issueId").get(
@@ -101,9 +101,8 @@ router.route("/issue/:issueId/progress").get(
     getIssueProgress
 );
 
-//To get Dept Issues 
+//To get Dept Issues (public for now)
 router.route("/departments/:deptName/issues").get(
-    verifyJWT,
     getDeptIssues
 );
 
@@ -114,7 +113,7 @@ router.route("/issues/:issueId/staff").get(
 );
 
 //TO get assign staff to particular issue
-router.route("/issues/:issueId/assign-staff").get(
+router.route("/issues/:issueId/assign-staff").post(
     verifyJWT,
     assignStaff
 );

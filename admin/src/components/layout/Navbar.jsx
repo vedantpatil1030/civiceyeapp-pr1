@@ -1,5 +1,6 @@
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { FiLogOut } from 'react-icons/fi';
 
 const Navbar = ({ onMenuClick }) => {
   const { logout } = useAuth();
@@ -11,7 +12,7 @@ const Navbar = ({ onMenuClick }) => {
   };
 
   return (
-    <header className="bg-gradient-to-r from-blue-600 to-purple-600 shadow-lg">
+    <header className="bg-gradient-to-r from-emerald-600 to-emerald-500 shadow-lg">
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center">
           <button
@@ -23,24 +24,21 @@ const Navbar = ({ onMenuClick }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <h2 className="text-2xl font-bold text-white ml-4 drop-shadow-lg tracking-wide">
-            Welcome to Municipal Admin Dashboard
-          </h2>
+          <div className="ml-4">
+            <h2 className="text-2xl font-semibold text-white drop-shadow-lg tracking-tight">
+              Jharkhand Municipal Admin Dashboard
+            </h2>
+            <p className="text-emerald-50/90 text-sm">Manage departments, issues and staff</p>
+          </div>
         </div>
 
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 bg-white rounded-full px-3 py-1 shadow">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg border-2 border-white">
-              M
-            </div>
-            <span className="text-gray-800 font-semibold text-base"></span>
-          </div>
           <button
             onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-md text-base font-semibold shadow transition duration-200"
+            className="inline-flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 active:bg-rose-200 shadow-sm"
             title="Logout"
           >
-            Logout
+            <FiLogOut className="h-4 w-4" /> Logout
           </button>
         </div>
       </div>
