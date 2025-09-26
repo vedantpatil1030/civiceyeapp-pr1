@@ -16,31 +16,16 @@ import AuthLoadingScreen from './src/screens/AuthLoading';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+import TabNavigator from './src/navigation/TabNavigator';
+
 // Tab Navigator for main app screens
 function MainTabs() {
   return (
-    <Tab.Navigator
-      initialRouteName="Report"
-      screenOptions={({ route, navigation }) => ({
-        headerRight: () => <AccountIcon style={{ marginRight: 16 }} navigation={navigation} />, // Pass navigation for explicitness
-        tabBarIcon: ({ color, size }) => {
-          if (route.name === 'Report') {
-            return <Ionicons name="create-outline" size={size} color={color} />;
-          } else if (route.name === 'Map') {
-            return <Ionicons name="map-outline" size={size} color={color} />;
-          } else if (route.name === 'Status') {
-            return <Ionicons name="list-outline" size={size} color={color} />;
-          }
-          return null;
-        },
-      })}
-    >
-      <Tab.Screen name="Report" component={ReportScreen} />
-      <Tab.Screen name="Map" component={MapScreen} />
-      <Tab.Screen name="Status" component={StatusScreen} />
-    </Tab.Navigator>
+    <TabNavigator />
   );
 }
+
+import { AuthProvider } from './src/contexts/AuthContext';
 
 export default function App() {
   return (

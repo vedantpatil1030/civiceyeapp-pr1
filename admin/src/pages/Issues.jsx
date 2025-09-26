@@ -1,24 +1,20 @@
-
 // /src/pages/Issues.jsx
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from "../config/axios";
 import { useToast } from "../hooks/useToast";
+import { useAuth } from "../context/AuthContext"; // Add this import
 import {
   FiTrash2,
   FiFilter,
   FiSearch,
   FiUserCheck,
-  FiUserPlus,
   FiCheckCircle,
   FiFileText,
-  FiClock,
   FiUsers,
   FiMessageCircle,
   FiUploadCloud,
-  FiArrowRightCircle,
   FiAlertCircle
 } from "react-icons/fi";
-import { API_BASE_URL } from "../config/api";
 
 /**
  * Issues Management page
@@ -26,65 +22,52 @@ import { API_BASE_URL } from "../config/api";
  * - Improved user experience with proper loading management
  */
 
-import { useState, useEffect } from "react";
-import { useToast } from "../hooks/useToast";
-import axios from "axios";
-import { FiEdit2, FiTrash2, FiFilter, FiSearch } from "react-icons/fi";
-import { API_BASE_URL } from "../config/api";
-
-
 const Issues = () => {
   const toast = useToast();
+  const { isAuthenticated, user } = useAuth();
 
-  // top-level state
+  // Top-level state
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-
-  // filters/search
+  // Filters/search
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
 
-  // selection
-
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-
+  // Selection
   const [selectedIssue, setSelectedIssue] = useState(null);
 
   // Global loading state to prevent multiple simultaneous operations
   const [globalLoading, setGlobalLoading] = useState(false);
 
-  // report modal
+  // Report modal
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportData, setReportData] = useState(null);
 
-  // comments modal
+  // Comments modal
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
 
-  // proof modal
+  // Proof modal
   const [showProofModal, setShowProofModal] = useState(false);
 
-  // complaint modal
+  // Complaint modal
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [complaintReason, setComplaintReason] = useState("");
 
-  // change status modal
+  // Change status modal
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState("");
 
-  // assign dept modal
+  // Assign dept modal
   const [showAssignDeptModal, setShowAssignDeptModal] = useState(false);
   const [departments, setDepartments] = useState([]);
   const [selectedDept, setSelectedDept] = useState("");
-  const [assignDeptMode, setAssignDeptMode] = useState("auto"); // 'auto' | 'manual'
 
-  // assign staff modal
+  // Assign staff modal
   const [showAssignStaffModal, setShowAssignStaffModal] = useState(false);
   const [staffList, setStaffList] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState("");
@@ -98,57 +81,37 @@ const Issues = () => {
     { value: "RESOLVED", label: "Resolved" }
   ];
 
-  // -----------------------
-  // Fetch issues (initial)
-  // -----------------------
-  useEffect(() => {
-    const fetchIssues = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(`${API_BASE_URL}/issues/getAllIssues`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-        setIssues(res.data.data || res.data.issues || []);
-      } catch (err) {
-        const msg = err.response?.data?.message || "Failed to fetch issues";
-        setError(msg);
-        toast.error(msg);
-
   // Fetch issues from backend
   useEffect(() => {
     const fetchIssues = async () => {
-      try {
+      if (issues.length === 0) {
         setLoading(true);
-        const token = localStorage.getItem("token");
-        const response = await axios.get(
-          `${API_BASE_URL}/issues/getAllIssues`,
-          {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          }
-        );
-        // Your backend returns { data: [ ...issues ] }
-        setIssues(response.data.data || []);
+      }
+      setError(null);
+      try {
+        const response = await api.get('/issues/all');      setIssues(response.data.data || response.data.issues || []);
       } catch (err) {
-        const errorMsg =
-          err.response?.data?.message || "Failed to fetch issues";
-        setError(errorMsg);
-        toast.error(errorMsg);
-
+      // Debug: Log detailed error information
+      console.error('Error fetching issues:', {
+        error: err,
+        response: err.response,
+        status: err.response?.status,
+        data: err.response?.data
+      });
+      
+      const errorMsg = err.response?.data?.message || "Failed to fetch issues";
+      setError(errorMsg);
+      toast.error(errorMsg);
       } finally {
-        setLoading(false);
+      setLoading(false);
       }
     };
 
     fetchIssues();
-
-  }, []); // Only run once on mount
-
-  // -----------------------
-  // Helper formatting
-  // -----------------------
-  const formatDate = (dateString) => {
+    
+    }, [toast]);
+  // Helper formatting functions
+  function formatDate(dateString) {
     if (!dateString) return "-";
     try {
       return new Date(dateString).toLocaleString("en-US", {
@@ -161,7 +124,7 @@ const Issues = () => {
     } catch {
       return dateString;
     }
-  };
+  }
 
   const getStatusColor = (status) => {
     const colors = {
@@ -183,9 +146,7 @@ const Issues = () => {
     return colors[priority?.toLowerCase()] || "text-gray-600";
   };
 
-  // -----------------------
   // Filters (computed)
-  // -----------------------
   const filteredIssues = issues.filter((issue) => {
     const q = searchTerm.trim().toLowerCase();
     const matchesSearch =
@@ -198,9 +159,7 @@ const Issues = () => {
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
-  // -----------------------
   // Handlers: Update Status (local + server)
-  // -----------------------
   const handleChangeStatus = async () => {
     if (!selectedIssue || !newStatus || globalLoading) {
       toast.error("Please select a status");
@@ -210,7 +169,6 @@ const Issues = () => {
 
     try {
       const token = localStorage.getItem("token");
-
       await axios.post(
         `${API_BASE_URL}/issues/${selectedIssue._id}/status`,
         { status: newStatus },
@@ -227,32 +185,16 @@ const Issues = () => {
     } finally {
       setGlobalLoading(false);
     }
-
-  }, []);
-
-  const handleUpdateStatus = (issueId, newStatus) => {
-    setIssues(
-      issues.map((issue) =>
-        issue._id === issueId ? { ...issue, status: newStatus.toUpperCase() } : issue
-      )
-    );
-    toast.success("Issue status updated successfully");
-
   };
 
-  // -----------------------
   // Delete (client-side only)
-  // -----------------------
   const handleDeleteIssue = (issueId) => {
-
     if (!window.confirm("Are you sure you want to delete this issue?") || globalLoading) return;
     setIssues((prev) => prev.filter((issue) => issue._id !== issueId));
     toast.success("Issue deleted successfully (locally)");
   };
 
-  // -----------------------
   // Assign Department
-  // -----------------------
   useEffect(() => {
     if (!showAssignDeptModal) return;
 
@@ -300,9 +242,7 @@ const Issues = () => {
     }
   };
 
-  // -----------------------
   // Assign Staff
-  // -----------------------
   useEffect(() => {
     if (!showAssignStaffModal || !selectedIssue) return;
     const fetchStaff = async () => {
@@ -369,9 +309,7 @@ const Issues = () => {
     }
   };
 
-  // -----------------------
   // Report modal (fetch)
-  // -----------------------
   const openReport = async (issue) => {
     if (globalLoading) return;
     setSelectedIssue(issue);
@@ -392,9 +330,7 @@ const Issues = () => {
     }
   };
 
-  // -----------------------
   // Comments (open & add)
-  // -----------------------
   const openComments = async (issue) => {
     if (globalLoading) return;
     setSelectedIssue(issue);
@@ -403,9 +339,10 @@ const Issues = () => {
     setComments([]);
     try {
       const token = localStorage.getItem("token");
-
       try {
-        const res = await axios.get(`${API_BASE_URL}/issues/${issue._id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        const res = await axios.get(`${API_BASE_URL}/issues/${issue._id}`, { 
+          headers: token ? { Authorization: `Bearer ${token}` } : {} 
+        });
         setComments(res.data.data?.comments || []);
       } catch (getErr) {
         setComments(issue.comments || []);
@@ -441,9 +378,7 @@ const Issues = () => {
     }
   };
 
-  // -----------------------
   // Complaint (raise complaint against dept)
-  // -----------------------
   const handleSubmitComplaint = async (e) => {
     e.preventDefault();
     if (!complaintReason.trim() || !selectedIssue || globalLoading) return;
@@ -459,61 +394,6 @@ const Issues = () => {
         { headers: token ? { Authorization: `Bearer ${token}` } : {} }
       );
 
-    if (!window.confirm("Are you sure you want to delete this issue?")) return;
-    setIssues(issues.filter((issue) => issue._id !== issueId));
-    toast.success("Issue deleted successfully");
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      reported: "bg-yellow-100 text-yellow-800",
-      verified: "bg-green-100 text-green-800",
-      completed: "bg-blue-100 text-blue-800",
-      "in-progress": "bg-purple-100 text-purple-800",
-      pending: "bg-gray-100 text-gray-800",
-    };
-    return colors[status?.toLowerCase()] || "bg-gray-100 text-gray-800";
-  };
-
-  const getPriorityColor = (priority) => {
-    const colors = {
-      high: "text-red-600",
-      medium: "text-yellow-600",
-      low: "text-green-600",
-    };
-    return colors[priority?.toLowerCase()] || "text-gray-600";
-  };
-
-  const filteredIssues = issues.filter((issue) => {
-    const matchesSearch =
-      issue.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      issue.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      issue.location?.address
-        ?.toLowerCase()
-        .includes(searchTerm.toLowerCase());
-
-    const matchesStatus =
-      statusFilter === "all" ||
-      issue.status?.toLowerCase() === statusFilter.toLowerCase();
-
-    const matchesPriority =
-      priorityFilter === "all" ||
-      issue.priority?.toLowerCase() === priorityFilter.toLowerCase();
-
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
- 
-
       toast.success("Complaint submitted successfully");
       setShowComplaintModal(false);
       setComplaintReason("");
@@ -524,9 +404,7 @@ const Issues = () => {
     }
   };
 
-  // -----------------------
-  // UI Render
-  // -----------------------
+  // Loading state
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -536,12 +414,10 @@ const Issues = () => {
     );
   }
 
+  // Error state
   if (error) {
     return (
-      <div
-        className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"
-        role="alert"
-      >
+      <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert">
         <p className="font-bold">Error</p>
         <p>{error}</p>
       </div>
@@ -562,7 +438,14 @@ const Issues = () => {
 
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Issues Management</h1>
+        <div className="flex items-center">
+          <h1 className="text-3xl font-bold text-gray-800">Issues Management</h1>
+          {loading && (
+            <div className="ml-4 flex items-center">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
+            </div>
+          )}
+        </div>
         <div className="flex gap-2">
           <button className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md font-medium transition duration-200">
             <FiFilter className="w-5 h-5" />
@@ -637,19 +520,8 @@ const Issues = () => {
                 <tr key={issue._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col">
-
                       <div className="text-sm font-medium text-gray-900">{issue.title || "No Title"}</div>
                       <div className="text-sm text-gray-500">{issue.description ? `${issue.description.substring(0, 100)}...` : "No description available"}</div>
-                    </div>
-
-                      <div className="text-sm font-medium text-gray-900">
-                        {issue.title || "No Title"}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {issue.description
-                          ? `${issue.description.substring(0, 100)}...`
-                          : "No description available"}
-                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -665,20 +537,12 @@ const Issues = () => {
                     >
                       {issue.status || "Reported"}
                     </span>
-
                   </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm text-gray-900">{issue.location?.address || "No Address"}</div></td>
-
                   <td className="px-6 py-4 whitespace-nowrap">
-
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(issue.status || "REPORTED")}`}>
-                      {issue.status || "REPORTED"}
+                    <span className={`text-sm font-medium ${getPriorityColor(issue.priority || "low")}`}>
+                      {issue.priority || "Low"}
                     </span>
                   </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap"><span className={`text-sm font-medium ${getPriorityColor(issue.priority || "low")}`}>{issue.priority || "Low"}</span></td>
-
                   <td className="px-6 py-4 whitespace-nowrap">{issue.classifiedDept || "-"}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{issue.finalDept || "-"}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{issue.assignedDept || "-"}</td>
@@ -687,24 +551,6 @@ const Issues = () => {
                   <td className="px-6 py-4 whitespace-nowrap">{issue.deadline ? formatDate(issue.deadline) : "-"}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{issue.reportedBy?.email || "Unknown"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(issue.createdAt)}</td>
-
-        <span
-                      className={`text-sm font-medium ${getPriorityColor(
-                        issue.priority || "low"
-                      )}`}
-                    >
-                      {issue.priority || "Low"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {issue.reportedBy?.email || "Unknown"}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(issue.createdAt)}
-                  </td>
-
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-center space-x-3">
                       <button 
@@ -715,7 +561,6 @@ const Issues = () => {
                       >
                         <FiFileText className="w-5 h-5" />
                       </button>
-
                       <button 
                         onClick={() => handleDeleteIssue(issue._id)} 
                         className="text-red-600 hover:text-red-900" 
@@ -736,48 +581,99 @@ const Issues = () => {
       {/* Issue Detail Modal */}
       {selectedIssue && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
-          <div className="bg-white p-8 rounded-lg shadow-xl max-w-3xl w-full">
-            <div className="flex justify-between items-start mb-6">
-
-              <h2 className="text-2xl font-bold text-blue-800 flex items-center gap-2"><FiFileText className="w-6 h-6" /> Issue Details</h2>
-              <button onClick={() => setSelectedIssue(null)} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
+          <div className="bg-white p-6 md:p-8 rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto ring-1 ring-slate-200">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
+              <div className="min-w-0">
+                <h2 className="text-xl md:text-2xl font-semibold text-slate-900 flex items-start gap-2">
+                  <FiFileText className="mt-0.5 h-6 w-6 text-slate-500" />
+                  <span className="truncate">{selectedIssue.title || 'Issue Details'}</span>
+                </h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStatusColor(selectedIssue.status)}`}>{selectedIssue.status || 'REPORTED'}</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium border ${getPriorityColor(selectedIssue.priority)}`}>{selectedIssue.priority || 'LOW'}</span>
+                  {selectedIssue.finalDept && (
+                    <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">{selectedIssue.finalDept}</span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setSelectedIssue(null)} className="text-slate-500 hover:text-slate-700 text-2xl leading-none">×</button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Body */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-3">
-                <div><span className="font-semibold text-gray-600">Title:</span> {selectedIssue.title}</div>
-                <div><span className="font-semibold text-gray-600">Description:</span> {selectedIssue.description}</div>
-                <div><span className="font-semibold text-gray-600">Type:</span> {selectedIssue.type}</div>
-                <div><span className="font-semibold text-gray-600">Classified Dept:</span> {selectedIssue.classifiedDept || "-"}</div>
-                <div><span className="font-semibold text-gray-600">Final Dept:</span> {selectedIssue.finalDept || "-"}</div>
-                <div><span className="font-semibold text-gray-600">Assigned Dept:</span> {selectedIssue.assignedDept || "-"}</div>
-                <div><span className="font-semibold text-gray-600">Assigned Staff:</span> {selectedIssue.assignedToStaff?.name || "-"}</div>
-                <div><span className="font-semibold text-gray-600">Upvotes:</span> {selectedIssue.upvoteCount || (selectedIssue.upvotes ? selectedIssue.upvotes.length : 0)}</div>
-                <div><span className="font-semibold text-gray-600">Deadline:</span> {selectedIssue.deadline ? formatDate(selectedIssue.deadline) : "-"}</div>
-                <div><span className="font-semibold text-gray-600">Status:</span> <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(selectedIssue.status)}`}>{selectedIssue.status}</span></div>
-                <div><span className="font-semibold text-gray-600">Priority:</span> <span className={`font-semibold ${getPriorityColor(selectedIssue.priority)}`}>{selectedIssue.priority}</span></div>
+                <div>
+                  <div className="text-xs uppercase text-slate-500">Description</div>
+                  <div className="text-sm text-slate-800 mt-1">{selectedIssue.description || '-'}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Type</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.type || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Upvotes</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.upvoteCount ?? (selectedIssue.upvotes ? selectedIssue.upvotes.length : 0)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Assigned Dept</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.assignedDept || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Assigned Staff</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.assignedToStaff?.name || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Classified Dept</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.classifiedDept || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Final Dept</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.finalDept || '-'}</div>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3">
-                <div><span className="font-semibold text-gray-600">Reported By:</span> {selectedIssue.reportedBy?.email || "-"}</div>
-                <div><span className="font-semibold text-gray-600">Reported At:</span> {formatDate(selectedIssue.createdAt)}</div>
-                <div><span className="font-semibold text-gray-600">Location:</span> {selectedIssue.location?.address || "-"}</div>
-                <div><span className="font-semibold text-gray-600">Coordinates:</span> {selectedIssue.location?.coordinates?.join(", ") || "-"}</div>
-                <div><span className="font-semibold text-gray-600">Comments:</span> {selectedIssue.comments?.length || 0}</div>
-                <div><span className="font-semibold text-gray-600">Proof of Work:</span> {selectedIssue.proofOfWork?.length || 0}</div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Reported By</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.reportedBy?.email || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Reported At</div>
+                    <div className="text-sm text-slate-800 mt-1">{formatDate(selectedIssue.createdAt)}</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase text-slate-500">Location</div>
+                  <div className="text-sm text-slate-800 mt-1">{selectedIssue.location?.address || '-'}</div>
+                  <div className="text-xs text-slate-500 mt-1">{selectedIssue.location?.coordinates?.join(', ') || '-'}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Deadline</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.deadline ? formatDate(selectedIssue.deadline) : '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-slate-500">Comments</div>
+                    <div className="text-sm text-slate-800 mt-1">{selectedIssue.comments?.length || 0}</div>
+                  </div>
+                </div>
 
                 <div className="flex flex-wrap gap-2 mt-2">
                   <button 
-                    className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs disabled:opacity-50" 
+                    className="flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 text-xs disabled:opacity-50" 
                     title="Assign Department" 
-                    onClick={() => { setAssignDeptMode("auto"); setSelectedDept(""); setShowAssignDeptModal(true); }}
+                    onClick={() => { setSelectedDept(""); setShowAssignDeptModal(true); }}
                     disabled={globalLoading}
                   >
                     <FiUserCheck />Assign Dept
                   </button>
 
                   <button 
-                    className="flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 text-xs disabled:opacity-50" 
+                    className="flex items-center gap-1 px-3 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 text-xs disabled:opacity-50" 
                     title="Assign Staff" 
                     onClick={() => { setShowAssignStaffModal(true); }}
                     disabled={globalLoading}
@@ -786,7 +682,7 @@ const Issues = () => {
                   </button>
 
                   <button 
-                    className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-xs disabled:opacity-50" 
+                    className="flex items-center gap-1 px-3 py-1 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 text-xs disabled:opacity-50" 
                     title="Change Status" 
                     onClick={() => { setShowStatusModal(true); setNewStatus(selectedIssue.status || ""); }}
                     disabled={globalLoading}
@@ -795,7 +691,7 @@ const Issues = () => {
                   </button>
 
                   <button 
-                    className="flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 text-xs disabled:opacity-50" 
+                    className="flex items-center gap-1 px-3 py-1 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded hover:bg-yellow-100 text-xs disabled:opacity-50" 
                     title="Generate/View Report" 
                     onClick={() => openReport(selectedIssue)}
                     disabled={globalLoading}
@@ -804,7 +700,7 @@ const Issues = () => {
                   </button>
 
                   <button 
-                    className="flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-xs disabled:opacity-50" 
+                    className="flex items-center gap-1 px-3 py-1 bg-gray-50 text-gray-700 border border-gray-200 rounded hover:bg-gray-100 text-xs disabled:opacity-50" 
                     title="View Comments" 
                     onClick={() => openComments(selectedIssue)}
                     disabled={globalLoading}
@@ -813,7 +709,7 @@ const Issues = () => {
                   </button>
 
                   <button 
-                    className="flex items-center gap-1 px-3 py-1 bg-pink-100 text-pink-700 rounded hover:bg-pink-200 text-xs disabled:opacity-50" 
+                    className="flex items-center gap-1 px-3 py-1 bg-pink-50 text-pink-700 border border-pink-200 rounded hover:bg-pink-100 text-xs disabled:opacity-50" 
                     title="Proof of Work" 
                     onClick={() => setShowProofModal(true)}
                     disabled={globalLoading}
@@ -822,7 +718,7 @@ const Issues = () => {
                   </button>
 
                   <button
-                    className="flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs disabled:opacity-50"
+                    className="flex items-center gap-1 px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded hover:bg-rose-100 text-xs disabled:opacity-50"
                     title="Raise Complaint"
                     onClick={() => setShowComplaintModal(true)}
                     disabled={globalLoading || (() => {
@@ -834,91 +730,22 @@ const Issues = () => {
                   >
                     <FiAlertCircle />Complain
                   </button>
-
-              <h2 className="text-2xl font-bold text-gray-800">
-                Issue Details
-              </h2>
-              <button
-                onClick={() => setSelectedIssue(null)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900">Status</h3>
-                <div className="mt-2 flex gap-2">
-                  {["reported", "verified", "completed"].map((status) => (
-                    <button
-                      key={status}
-                      onClick={() =>
-                        handleUpdateStatus(selectedIssue._id, status)
-                      }
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        selectedIssue.status?.toLowerCase() === status
-                          ? getStatusColor(status)
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </button>
-                  ))}
-
                 </div>
               </div>
             </div>
-
 
             {selectedIssue.images && selectedIssue.images.length > 0 && (
               <div className="mt-6">
-                <div className="font-semibold text-gray-600 mb-2">Issue Images</div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-xs uppercase text-slate-500 mb-2">Issue Images</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {selectedIssue.images.map((image, idx) => (
-                    <img key={idx} src={image} alt={`Issue ${idx + 1}`} className="h-24 w-full object-cover rounded-lg border" />
+                    <div key={idx} className="aspect-video overflow-hidden rounded-lg ring-1 ring-slate-200">
+                      <img src={image} alt={`Issue ${idx + 1}`} className="h-full w-full object-cover" />
+                    </div>
                   ))}
-
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">
-                    Issue Information
-                  </h3>
-                  <dl className="mt-2 space-y-2">
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">
-                        Title
-                      </dt>
-                      <dd className="text-sm text-gray-900">
-                        {selectedIssue.title}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">
-                        Description
-                      </dt>
-                      <dd className="text-sm text-gray-900">
-                        {selectedIssue.description}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">
-                        Priority
-                      </dt>
-                      <dd
-                        className={`text-sm font-medium ${getPriorityColor(
-                          selectedIssue.priority
-                        )}`}
-                      >
-                        {selectedIssue.priority}
-                      </dd>
-                    </div>
-                  </dl>
-
                 </div>
               </div>
             )}
-
 
             <div className="mt-8 flex justify-end">
               <button onClick={() => setSelectedIssue(null)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md">Close</button>
@@ -1068,35 +895,11 @@ const Issues = () => {
                     <div key={idx} className="bg-gray-100 rounded p-2">
                       <div className="text-sm text-gray-800">{c.text || c.comment || c}</div>
                       <div className="text-xs text-gray-500 mt-1">{c.author?.email || c.author || c.user?.email || "Anonymous"} {c.createdAt ? `· ${new Date(c.createdAt).toLocaleString()}` : ""}</div>
-
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">
-                    Location Details
-                  </h3>
-                  <dl className="mt-2 space-y-2">
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">
-                        Address
-                      </dt>
-                      <dd className="text-sm text-gray-900">
-                        {selectedIssue.location?.address || "No Address"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">
-                        Coordinates
-                      </dt>
-                      <dd className="text-sm text-gray-900">
-                        {selectedIssue.location?.coordinates?.join(", ") ||
-                          "N/A"}
-                      </dd>
-
                     </div>
                   ))
                 )}
               </div>
             )}
-
 
             <form className="flex gap-2 mt-2" onSubmit={handleAddComment}>
               <input 
@@ -1143,23 +946,6 @@ const Issues = () => {
                     )}
                     {proof.uploadedBy && <div className="text-xs text-gray-500">Submitted by: {proof.uploadedBy.email || proof.uploadedBy}</div>}
                     {proof.createdAt && <div className="text-xs text-gray-400">{new Date(proof.createdAt).toLocaleString()}</div>}
-
-              {selectedIssue.images && selectedIssue.images.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">
-                    Issue Images
-                  </h3>
-                  <div className="mt-2 grid grid-cols-3 gap-4">
-                    {selectedIssue.images.map((image, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={image}
-                          alt={`Issue ${index + 1}`}
-                          className="h-24 w-full object-cover rounded-lg"
-                        />
-                      </div>
-                    ))}
-
                   </div>
                 ))
               )}
@@ -1279,7 +1065,6 @@ const Issues = () => {
           </div>
         </div>
       )}
-
     </div>
   );
 };

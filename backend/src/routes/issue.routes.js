@@ -4,8 +4,9 @@ import {
     createIssue,
     adminAssign,
     changeStatus,
-    upvote,
+    upvoteIssue,
     addComment,
+    getComments,
     nearbyIssues,
     staffUploadProof,
     getAllIssues,
@@ -64,7 +65,7 @@ router.route("/:issueId/status").post(
 router.route("/:issueId/upvote").post(
     verifyJWT, 
     authorizeRoles("CITIZEN"), 
-    upvote
+    upvoteIssue
 );
 
 //Add Comment
@@ -79,10 +80,8 @@ router.route("/nearby").get(
     nearbyIssues
 );
 
-router.route("/getAllIssues").get(
-    // verifyJWT,
-    getAllIssues
-);
+// Public route for getting all issues
+router.get("/all", getAllIssues); // Removed verifyJWT to make it public
 
 //Get Issue By ID
 router.route("/issues/:issueId").get(
@@ -102,9 +101,8 @@ router.route("/issue/:issueId/progress").get(
     getIssueProgress
 );
 
-//To get Dept Issues 
+//To get Dept Issues (public for now)
 router.route("/departments/:deptName/issues").get(
-    verifyJWT,
     getDeptIssues
 );
 
@@ -143,5 +141,12 @@ router.get("/my-reports", verifyJWT, getMyIssues);
 
 // Get all issues (for map view)
 router.get("/all", verifyJWT, getAllIssues);
+
+// Upvote routes
+router.post("/:issueId/upvote", verifyJWT, upvoteIssue);
+
+// Comment routes
+router.post("/:issueId/comments", verifyJWT, addComment);
+router.get("/:issueId/comments", verifyJWT, getComments);
 
 export default router;

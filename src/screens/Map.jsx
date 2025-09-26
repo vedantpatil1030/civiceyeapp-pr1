@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-
 import {
   StyleSheet,
   View,
@@ -11,10 +9,12 @@ import {
   useColorScheme,
   Modal,
   Dimensions,
+  ActivityIndicator
 } from 'react-native';
 import { LeafletView } from 'react-native-leaflet-view';
 import AccountIcon from '../components/AccountIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mockDataService } from '../utils/mockData/mockDataService';
 
 
 
@@ -28,7 +28,8 @@ const MapScreen = ({ navigation }) => {
     const [selectedIssue, setSelectedIssue] = useState(null);
     const [modalVisible, setModalVisible] = useState(false);
     const [issues, setIssues] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+
 
     const isDarkMode = useColorScheme() === 'dark';
     const { width, height } = Dimensions.get('window');
@@ -49,32 +50,16 @@ const MapScreen = ({ navigation }) => {
         </View>
     );
 
-    // Fetch all issues from backend
+    // Fetch mock issues
     useEffect(() => {
         const fetchIssues = async () => {
             setLoading(true);
             try {
-                const token = await AsyncStorage.getItem('accessToken');
-                if (!token) {
-                    Alert.alert('Error', 'Please login to view issues');
-                    setLoading(false);
-                    return;
-                }
-                
-                const res = await axios.get('http://10.0.2.2:8000/api/v1/issues/all', {
-                    headers: { 
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                const data = res.data?.data?.issues || [];
-                if (!Array.isArray(data)) {
-                    console.error('Invalid data format received:', res.data);
-                    throw new Error('Invalid data format received from server');
-                }
-                setIssues(data);
+                // Get mock issues from our service
+                const mockIssues = mockDataService.getIssues();
+                setIssues(mockIssues);
             } catch (err) {
-                console.error('Error fetching issues:', err?.response?.data || err);
+                console.error('Error loading mock issues:', err);
                 Alert.alert('Error', 'Failed to load issues. Please try again.');
                 setIssues([]);
             }
@@ -102,19 +87,21 @@ const MapScreen = ({ navigation }) => {
         { id: 'all', name: 'All Issues', icon: '🗺️', color: '#2196F3' },
         { id: 'infrastructure', name: 'Infrastructure', icon: '🏗️', color: '#ff9800' },
         { id: 'safety', name: 'Safety', icon: '🛡️', color: '#f44336' },
-        { id: 'environment', name: 'Environment', icon: '🌿', color: '#4caf50' },
-        { id: 'cleanliness', name: 'Cleanliness', icon: '🧹', color: '#9c27b0' },
-        { id: 'transport', name: 'Transport', icon: '🚗', color: '#607d8b' },
+        { id: 'INFRASTRUCTURE', name: 'Infrastructure', icon: '🏗️', color: '#ff4757' },
+        { id: 'SAFETY', name: 'Safety', icon: '🛡️', color: '#ffa502' },
+        { id: 'ENVIRONMENT', name: 'Environment', icon: '🌿', color: '#4caf50' },
+        { id: 'CLEANLINESS', name: 'Cleanliness', icon: '🧹', color: '#9c27b0' },
+        { id: 'TRANSPORT', name: 'Transport', icon: '🚗', color: '#607d8b' },
     ];
 
     // Get category icon - moved before mapMarkers creation
     const getCategoryIcon = (category) => {
         const icons = {
-            infrastructure: '🏗️',
-            safety: '🛡️',
-            environment: '🌿',
-            cleanliness: '🧹',
-            transport: '🚗'
+            INFRASTRUCTURE: '🏗️',
+            SAFETY: '🛡️',
+            ENVIRONMENT: '🌿',
+            CLEANLINESS: '🧹',
+            TRANSPORT: '🚗'
         };
         return icons[category] || '📝';
     };
@@ -131,8 +118,39 @@ const MapScreen = ({ navigation }) => {
 
     // Create detailed pin-style markers
     const mapMarkers = filteredIssues.map(issue => {
-        let pinColor = '#ff4757'; // Default red for open
-        let statusIcon = '⚠️';
+        let pinColor;
+        let statusIcon;
+        
+        // Set color and icon based on status
+        switch (issue.status) {
+            case 'REPORTED':
+                pinColor = '#ff4757';
+                statusIcon = '⚠️';
+                break;
+            case 'IN_PROGRESS':
+                pinColor = '#ffa502';
+                statusIcon = '🔧';
+                break;
+            case 'RESOLVED':
+                pinColor = '#2ed573';
+                statusIcon = '✅';
+                break;
+            case 'ASSIGNED_DEPT':
+                pinColor = '#1e90ff';
+                statusIcon = '👥';
+                break;
+            case 'ASSIGNED_STAFF':
+                pinColor = '#7bed9f';
+                statusIcon = '👤';
+                break;
+            case 'VERIFIED':
+                pinColor = '#2ed573';
+                statusIcon = '✔️';
+                break;
+            default:
+                pinColor = '#ff4757';
+                statusIcon = '⚠️';
+        }
         const status = (issue.status || '').toLowerCase();
         if (status === 'in_progress' || status === 'in-progress') {
             pinColor = '#ffa502'; // Orange
@@ -314,6 +332,15 @@ const MapScreen = ({ navigation }) => {
         return { count };
     };
 
+    // Get statistics by category
+    const getStatsByCategory = (category) => {
+        return {
+            total: filteredIssues.filter(issue => issue.type === category || issue.category === category).length,
+            high: filteredIssues.filter(issue => (issue.type === category || issue.category === category) && issue.priority === 'high').length,
+            resolved: filteredIssues.filter(issue => (issue.type === category || issue.category === category) && issue.status === 'resolved').length
+        };
+    };
+
     // Debug logging
     useEffect(() => {
         console.log('=== MAP WITH FULL UI DEBUG ===');
@@ -333,15 +360,17 @@ const MapScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={[styles.container, backgroundStyle]}>
-            {/* Account Icon */}
-            <AccountIcon />
-            
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={[styles.title, { color: textColor }]}>🗺️ India Civic Issues Map</Text>
-                <Text style={[styles.subtitle, { color: textColor }]}>
-                    Interactive map showing civic issues across major cities
-                </Text>
+            {/* Header with Account Icon */}
+            <View style={styles.headerContainer}>
+                <View style={styles.header}>
+                    <Text style={[styles.title, { color: textColor }]}>🗺️ India Civic Issues Map</Text>
+                    <Text style={[styles.subtitle, { color: textColor }]}>
+                        Interactive map showing civic issues across major cities
+                    </Text>
+                </View>
+                <View style={styles.accountIconContainer}>
+                    <AccountIcon />
+                </View>
             </View>
 
             {/* Filters */}
@@ -402,44 +431,49 @@ const MapScreen = ({ navigation }) => {
                 <Text style={[styles.sectionTitle, { color: textColor }]}>📊 Issue Analytics Dashboard</Text>
                 <View style={styles.statsGrid}>
                     <View style={[styles.statCard, { backgroundColor: '#ffebee' }]}>
-                        <Text style={styles.statNumber}>{getStatsByStatus('open').count}</Text>
-                        <Text style={styles.statLabel}>🔴 Open Issues</Text>
-                        <Text style={styles.statSubtext}>Needs Attention</Text>
+                        <Text style={styles.statNumber}>{getStatsByStatus('REPORTED').count}</Text>
+                        <Text style={styles.statLabel}>⚠️ Reported</Text>
+                        <Text style={styles.statSubtext}>New Issues</Text>
                     </View>
                     <View style={[styles.statCard, { backgroundColor: '#fff3e0' }]}>
-                        <Text style={styles.statNumber}>{getStatsByStatus('in-progress').count}</Text>
-                        <Text style={styles.statLabel}>🟡 In Progress</Text>
+                        <Text style={styles.statNumber}>{getStatsByStatus('IN_PROGRESS').count}</Text>
+                        <Text style={styles.statLabel}>� In Progress</Text>
                         <Text style={styles.statSubtext}>Being Resolved</Text>
                     </View>
                     <View style={[styles.statCard, { backgroundColor: '#e8f5e8' }]}>
-                        <Text style={styles.statNumber}>{getStatsByStatus('resolved').count}</Text>
-                        <Text style={styles.statLabel}>🟢 Resolved</Text>
+                        <Text style={styles.statNumber}>{getStatsByStatus('RESOLVED').count}</Text>
+                        <Text style={styles.statLabel}>✅ Resolved</Text>
                         <Text style={styles.statSubtext}>Completed</Text>
                     </View>
                 </View>
                 
-                {/* Additional Stats */}
-                <View style={styles.additionalStats}>
-                    <View style={styles.statRow}>
-                        <Text style={[styles.statRowLabel, { color: textColor }]}>📈 Total Issues:</Text>
-                        <Text style={[styles.statRowValue, { color: textColor }]}>{issues.length}</Text>
-                    </View>
-                    <View style={styles.statRow}>
-                        <Text style={[styles.statRowLabel, { color: textColor }]}>🔍 Currently Viewing:</Text>
-                        <Text style={[styles.statRowValue, { color: textColor }]}>{filteredIssues.length}</Text>
-                    </View>
-                    <View style={styles.statRow}>
-                        <Text style={[styles.statRowLabel, { color: textColor }]}>🏙️ Cities Covered:</Text>
-                        <Text style={[styles.statRowValue, { color: textColor }]}>
-                            {[...new Set(issues.map(issue => (issue.location && typeof issue.location === 'string') ? issue.location.split(',')[1]?.trim() : ''))].filter(Boolean).length}
-                        </Text>
-                    </View>
-                    <View style={styles.statRow}>
-                        <Text style={[styles.statRowLabel, { color: textColor }]}>⚡ High Priority:</Text>
-                        <Text style={[styles.statRowValue, { color: '#ff4757' }]}>
-                            {filteredIssues.filter(issue => issue.priority === 'high').length}
-                        </Text>
-                    </View>
+               
+
+                {/* Category-wise Statistics */}
+                <View style={styles.categoryStats}>
+                    <Text style={[styles.sectionSubtitle, { color: textColor }]}>Category-wise Distribution</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        {filters.filter(f => f.id !== 'all').map(category => {
+                            const stats = getStatsByCategory(category.id);
+                            return (
+                                <View key={category.id} style={[styles.categoryCard, { borderColor: category.color }]}>
+                                    <Text style={styles.categoryIcon}>{category.icon}</Text>
+                                    <Text style={[styles.categoryName, { color: textColor }]}>{category.name}</Text>
+                                    <View style={styles.categoryDetails}>
+                                        <Text style={[styles.categoryCount, { color: category.color }]}>{stats.total}</Text>
+                                        <View style={styles.categoryMetrics}>
+                                            <Text style={[styles.metricText, { color: textColor }]}>
+                                                ⚡ {stats.high} High Priority
+                                            </Text>
+                                            <Text style={[styles.metricText, { color: textColor }]}>
+                                                ✅ {stats.resolved} Resolved
+                                            </Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </ScrollView>
                 </View>
             </View>
 
@@ -493,14 +527,14 @@ const MapScreen = ({ navigation }) => {
                                     <View style={styles.modalSection}>
                                         <Text style={[styles.sectionTitle, { color: textColor }]}>📍 Location Details</Text>
                                         <Text style={[styles.modalDetailText, { color: textColor }]}>
-                                            <Text style={styles.labelText}>Area: </Text>{selectedIssue.location}
-                                        </Text>
-                                        <Text style={[styles.modalDetailText, { color: textColor }]}>
-                                            <Text style={styles.labelText}>Address: </Text>{selectedIssue.address}
+                                            <Text style={styles.labelText}>Area: </Text>
+                                            {selectedIssue.location?.address || 'N/A'}
                                         </Text>
                                         <Text style={[styles.modalDetailText, { color: textColor }]}>
                                             <Text style={styles.labelText}>Coordinates: </Text>
-                                            {selectedIssue.latitude.toFixed(4)}, {selectedIssue.longitude.toFixed(4)}
+                                            {selectedIssue.location?.coordinates ? 
+                                                `${selectedIssue.location.coordinates[1].toFixed(4)}, ${selectedIssue.location.coordinates[0].toFixed(4)}` 
+                                                : 'N/A'}
                                         </Text>
                                     </View>
 
@@ -571,6 +605,55 @@ const MapScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+    // Category Statistics Styles
+    categoryStats: {
+        marginTop: 15,
+        paddingVertical: 10,
+    },
+    sectionSubtitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 10,
+        paddingHorizontal: 10,
+    },
+    categoryCard: {
+        backgroundColor: '#ffffff',
+        borderRadius: 12,
+        padding: 12,
+        marginHorizontal: 6,
+        borderLeftWidth: 3,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+        minWidth: 150,
+    },
+    categoryIcon: {
+        fontSize: 24,
+        marginBottom: 4,
+    },
+    categoryName: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    categoryDetails: {
+        alignItems: 'center',
+    },
+    categoryCount: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    categoryMetrics: {
+        width: '100%',
+    },
+    metricText: {
+        fontSize: 10,
+        marginTop: 2,
+        opacity: 0.8,
+    },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -595,11 +678,21 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        padding: 12,
-        alignItems: 'center',
+    headerContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
         borderBottomWidth: 1,
         borderBottomColor: '#e0e0e0',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    header: {
+        flex: 1,
+        paddingRight: 16,
+    },
+    accountIconContainer: {
+        marginLeft: 'auto',
     },
     title: {
         fontSize: 20,

@@ -362,4 +362,3 @@ const getStyles = (isDark) => StyleSheet.create({
 });
 
 export default LoginScreen;
-

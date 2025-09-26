@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import axios from "axios";
+import api from "../config/axios";
 import { API_BASE_URL } from "../config/api";
 import {
   FiUsers,
@@ -41,52 +41,17 @@ const DepartmentDashboard = () => {
 
   // Fetch issues with error handling and loading management
   const fetchIssues = useCallback(async () => {
-    if ((!deptId && !deptName) || !token) {
-      const missingItems = [];
-      if (!deptId && !deptName) missingItems.push("Department identifier");
-      if (!token) missingItems.push("Authentication token");
-      setError(`Missing: ${missingItems.join(" and ")}. Please log in again or contact your administrator.`);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
-      // Try with department _id first, then fallback to departmentName
-      let res;
-      if (deptId) {
-        try {
-          res = await axios.get(`${API_BASE_URL}/departments/${deptId}/issues`, {
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: 10000
-          });
-        } catch (err) {
-          if (deptName) {
-            res = await axios.get(`${API_BASE_URL}/departments/${deptName}/issues`, {
-              headers: { Authorization: `Bearer ${token}` },
-              timeout: 10000
-            });
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        res = await axios.get(`${API_BASE_URL}/departments/${deptName}/issues`, {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 10000
-        });
-      }
+      // Backend route is under /issues router: /issues/departments/:deptName/issues
+      const key = deptName || deptId || 'ROADS';
+      const res = await api.get(`/issues/departments/${key}/issues`, { timeout: 10000 });
       setIssues(res.data.data || res.data.issues || []);
     } catch (err) {
       console.error("Failed to fetch department issues:", err);
       let message = "Failed to fetch department issues";
-      if (err.response?.status === 401) {
-        message = "Authentication failed. Please log in again.";
-        localStorage.removeItem("token");
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("accessToken");
-      } else if (err.response?.status === 403) {
+      if (err.response?.status === 403) {
         message = "Access denied. You don't have permission to view this department's issues.";
       } else if (err.response?.status === 404) {
         message = "Department not found. Please check the department name or ID.";
@@ -114,10 +79,7 @@ const DepartmentDashboard = () => {
     setStaffList([]);
     
     try {
-      const res = await axios.get(`${API_BASE_URL}/departments/${deptName}/members`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 8000
-      });
+      const res = await api.get(`/departments/${deptName || 'ROADS'}/members`, { timeout: 8000 });
       setStaffList(res.data.data?.members || res.data.members || []);
     } catch (err) {
       console.error("Failed to fetch staff:", err);
@@ -135,13 +97,10 @@ const DepartmentDashboard = () => {
     setGlobalLoading(true);
     
     try {
-      await axios.post(
-        `${API_BASE_URL}/issues/${selectedIssue._id}/assign-staff`,
+      await api.post(
+        `/issues/${selectedIssue._id}/assign-staff`,
         { staffId: selectedStaff },
-        { 
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 8000
-        }
+        { timeout: 8000 }
       );
       
       // Update local state
@@ -177,12 +136,9 @@ const DepartmentDashboard = () => {
     formData.append("file", file);
     
     try {
-      await axios.post(`${API_BASE_URL}/issues/${issueId}/proof`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data"
-        },
-        timeout: 30000 // 30 seconds for file upload
+      await api.post(`/issues/${issueId}/proof`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 30000
       });
       
       alert("Proof uploaded successfully");

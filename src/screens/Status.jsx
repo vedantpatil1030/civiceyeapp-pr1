@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import AccountIcon from '../components/AccountIcon';
 import {
   View,
   Text,
@@ -13,15 +13,17 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-// import { issuesAPI } from '../services/api';
-// import { useAuth } from '../contexts/AuthContext';
+import api from '../../services/api';
 
 const StatusScreen = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
-  const [myReports, setMyReports] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [myReports, setMyReports] = useState([]); // Initialize with empty array
+  const [loading, setLoading] = useState(true);  // Start with loading true
   const [refreshing, setRefreshing] = useState(false);
   const isDarkMode = useColorScheme() === 'dark';
+  
+  // Calculate counts for different statuses
+  
 
   // Helper function to format date
   const formatDate = (dateString) => {
@@ -32,9 +34,6 @@ const StatusScreen = ({ navigation }) => {
       day: 'numeric'
     });
   };
-
-  // Fetch user's issues from backend
-  // (removed duplicate fetchMyIssues definition here)
 
   useEffect(() => {
     fetchMyIssues();
@@ -63,48 +62,117 @@ const StatusScreen = ({ navigation }) => {
     }
   };
 
+  // Helper function to get priority color
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'HIGH':
+        return '#ff4757'; // Red
+      case 'MEDIUM':
+        return '#ffa502'; // Orange/Yellow
+      case 'LOW':
+        return '#2ed573'; // Green
+      default:
+        return '#ff4757'; // Default to red
+    }
+  };
+
+  // Helper function to get category/type color
+  const getCategoryColor = (category) => {
+    switch (category) {
+      case 'WATER':
+        return '#3498db'; // Blue for water issues
+      case 'ROADS':
+        return '#95a5a6'; // Gray for road issues
+      case 'ELECTRICITY':
+        return '#f1c40f'; // Yellow for electricity
+      case 'SANITATION':
+        return '#27ae60'; // Green for sanitation
+      case 'INFRASTRUCTURE':
+        return '#e67e22'; // Orange for infrastructure
+      case 'ENVIRONMENT':
+        return '#2ecc71'; // Light green for environment
+      case 'OTHER':
+        return '#9b59b6'; // Purple for other issues
+      default:
+        return '#bdc3c7'; // Default light gray
+    }
+  };
+
   // Fetch user's issues
   const fetchMyIssues = async () => {
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        Alert.alert('Error', 'No access token found. Please login again.');
-        navigation.navigate('Login');
-        setLoading(false);
-        return;
-      }
+      
+      const response = await api.get('/issues/my-reports');  // Updated to match backend route
 
-      const response = await axios.get('http://10.0.2.2:8000/api/v1/issues/my-reports', {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      console.log('Debug - My Reports Response:', {
+        status: response.status,
+        dataLength: response.data?.data?.length || 0,
+        rawData: response.data,
+        dataStructure: response.data ? Object.keys(response.data) : 'no data',
+        firstItem: response.data?.data?.[0] || 'no items'
       });
 
-      if (response.status === 401) {
-        Alert.alert('Session Expired', 'Please login again');
-        navigation.navigate('Login');
+     
+
+      if (!response.data?.data) {
+        throw new Error('Invalid response format from server');
+      }
+
+      // Ensure we're setting an array
+      const reportsData = Array.isArray(response.data.data) ? response.data.data : 
+                         Array.isArray(response.data.data.issues) ? response.data.data.issues :
+                         [];
+      
+      console.log('Setting reports:', {
+        reportsLength: reportsData.length,
+        firstReport: reportsData[0] || 'no first report'
+      });
+
+      setMyReports(reportsData);
+    } catch (err) {
+      console.error('Error fetching user issues:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        url: err.config?.url,
+        method: err.config?.method,
+        headers: err.config?.headers,
+        networkError: !err.response,
+        timeout: err.code === 'ECONNABORTED'
+      });
+
+      // Handle token expiration or invalid token
+      if (err.response?.status === 401) {
+        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+        Alert.alert(
+          'Session Expired', 
+          'Please login again to continue.',
+          [
+            { 
+              text: 'OK', 
+              onPress: () => navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }]
+              })
+            }
+          ]
+        );
         return;
       }
 
-      // Handle the ApiResponse wrapper format
-      const data = response.data?.data?.issues || [];
-      if (!Array.isArray(data)) {
-        console.error('Invalid data format received:', response.data);
-        throw new Error('Invalid data format received from server');
+      // Handle network errors
+      if (!err.response) {
+        Alert.alert('Network Error', 'Please check your internet connection and try again.');
+        return;
       }
 
-      setMyReports(data);
-    } catch (error) {
-      console.error('Error fetching user issues:', error?.response?.data || error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load your issues. Please try again.';
+      // Handle other errors
+      const errorMessage = err.response?.data?.message || 'Failed to load your issues. Please try again.';
       Alert.alert('Error', errorMessage);
-      if (error?.response?.status === 401) {
-        navigation.navigate('Login');
-      }
     } finally {
       setLoading(false);
+      setRefreshing(false);  // Make sure to reset refreshing state
     }
   };
 
@@ -119,29 +187,50 @@ const StatusScreen = ({ navigation }) => {
     fetchMyIssues();
   }, []);
 
+  // Monitor myReports state
+  useEffect(() => {
+    console.log('MyReports state updated:', {
+      length: myReports.length,
+      isArray: Array.isArray(myReports),
+      firstItem: myReports[0] ? {
+        id: myReports[0]._id,
+        title: myReports[0].title,
+        status: myReports[0].status
+      } : 'no items'
+    });
+  }, [myReports]);
+
   // Filter reports based on selected filter
-  const filteredReports = Array.isArray(myReports) ? myReports.filter(report => {
-    if (!report) return false;
-    if (selectedFilter === 'all') return true;
+  const filteredReports = React.useMemo(() => {
+    // Ensure myReports is an array
+    if (!Array.isArray(myReports)) return [];
     
-    const statusMap = {
-      'pending': ['OPEN'],
-      'review': ['IN_PROGRESS'],
-      'progress': ['IN_PROGRESS'],
-      'completed': ['RESOLVED', 'CLOSED']
-    };
-    
-    return statusMap[selectedFilter]?.includes(report.status);
-  }) : [];
+    return myReports.filter(report => {
+      if (!report) return false;
+      if (selectedFilter === 'all') return true;
+      
+      const statusMap = {
+        'pending': ['OPEN'],
+        'review': ['IN_PROGRESS'],
+        'progress': ['IN_PROGRESS'],
+        'completed': ['RESOLVED', 'CLOSED']
+      };
+      
+      return statusMap[selectedFilter]?.includes(report?.status);
+    });
+  }, [myReports, selectedFilter]);
 
   // Calculate counts for filters
   const getFilterCounts = () => {
+    // Ensure myReports is an array
+    const reports = Array.isArray(myReports) ? myReports : [];
+    
     const counts = {
-      all: myReports.length,
-      pending: myReports.filter(r => ['OPEN'].includes(r.status)).length,
-      review: myReports.filter(r => r.status === 'IN_PROGRESS').length,
-      progress: myReports.filter(r => r.status === 'IN_PROGRESS').length,
-      completed: myReports.filter(r => ['RESOLVED', 'CLOSED'].includes(r.status)).length,
+      all: reports.length,
+      pending: reports.filter(r => r && ['OPEN'].includes(r.status)).length,
+      review: reports.filter(r => r && r.status === 'IN_PROGRESS').length,
+      progress: reports.filter(r => r && r.status === 'IN_PROGRESS').length,
+      completed: reports.filter(r => r && ['RESOLVED', 'CLOSED'].includes(r.status)).length,
     };
     return counts;
   };
@@ -180,37 +269,88 @@ const StatusScreen = ({ navigation }) => {
     }
   };
 
-  // Handle viewing details of a report
-  const handleViewDetails = (report) => {
-    Alert.alert(
-      `Report Details`,
-      `Title: ${report.title}\n\nStatus: ${report.status}\nCategory: ${report.category}\nLocation: ${report.location}\n\nDescription:\n${report.description}\n\nLatest Update:\n${report.updates[report.updates.length - 1].message}`,
-      [
-        { text: 'View All Updates', onPress: () => showAllUpdates(report) },
-        { text: 'Close', style: 'cancel' }
-      ]
-    );
+  // Handle upvoting an issue
+  const handleUpvote = async (reportId) => {
+    try {
+      await api.post(`/issues/${reportId}/upvote`);
+      // Refresh the issues list to get updated upvote count
+      await fetchMyIssues();
+    } catch (error) {
+      console.error('Error upvoting issue:', error);
+      Alert.alert('Error', 'Failed to upvote. Please try again.');
+    }
   };
 
-  const showAllUpdates = (report) => {
-    const updatesText = report.updates
-      .map(update => `${update.date}: ${update.message}`)
-      .join('\n\n');
-    
-    Alert.alert(
-      `Updates for Report #${report.id}`,
-      updatesText,
-      [{ text: 'Close' }]
-    );
+  // Handle viewing details of a report
+  const handleViewDetails = async (report) => {
+    try {
+      // Get fresh details including latest updates
+      const response = await api.get(`/issues/${report.id}`);
+      const updatedReport = response.data?.data;
+      
+      const latestUpdate = updatedReport.updates && updatedReport.updates.length > 0 
+        ? `\n\nLatest Update:\n${updatedReport.updates[updatedReport.updates.length - 1].message}`
+        : '';
+
+      Alert.alert(
+        `Report Details`,
+        `Title: ${updatedReport.title || 'N/A'}\n\nStatus: ${updatedReport.status || 'N/A'}\nCategory: ${updatedReport.category || 'N/A'}\nLocation: ${updatedReport.location || 'N/A'}\n\nDescription:\n${updatedReport.description || 'No description provided'}${latestUpdate}`,
+        [
+          ...(updatedReport.updates && updatedReport.updates.length > 0 
+            ? [{ text: 'View All Updates', onPress: () => showAllUpdates(updatedReport) }]
+            : []
+          ),
+          { text: 'Close', style: 'cancel' }
+        ]
+      );
+    } catch (error) {
+      console.error('Error fetching issue details:', error);
+      Alert.alert('Error', 'Failed to load issue details. Please try again.');
+    }
+  };
+
+  const showAllUpdates = async (report) => {
+    try {
+      // Get fresh comments
+      const commentsResponse = await api.get(`/issues/${report.id}/comments`);
+      const comments = commentsResponse.data?.data?.comments || [];
+
+      if (!comments || comments.length === 0) {
+        Alert.alert(
+          `Updates for Report #${report.id || ''}`,
+          'No updates available for this report.',
+          [{ text: 'Close' }]
+        );
+        return;
+      }
+
+      const updatesText = comments
+        .map((comment) => `${formatDate(comment.createdAt)}: ${comment.text || 'No message'}`)
+        .join('\n\n');
+      
+      Alert.alert(
+        `Updates for Report #${report.id || ''}`,
+        updatesText || 'No updates available',
+        [{ text: 'Close' }]
+      );
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      Alert.alert('Error', 'Failed to load comments. Please try again.');
+    }
   };
 
   return (
     <SafeAreaView style={[styles.container, backgroundStyle]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: textColor }]}>Issue Status</Text>
-        <Text style={[styles.headerSubtitle, { color: textColor }]}>
-          Track your reported issues
-        </Text>
+        <View style={styles.headerContent}>
+          <Text style={[styles.headerTitle, { color: textColor }]}>Issue Status</Text>
+          <Text style={[styles.headerSubtitle, { color: textColor }]}>
+            Track your reported issues
+          </Text>
+        </View>
+        <View style={styles.headerRight}>
+          <AccountIcon />
+        </View>
       </View>
 
       {/* Summary Stats */}
@@ -234,9 +374,9 @@ const StatusScreen = ({ navigation }) => {
       {/* Filters */}
       <View style={styles.filtersSection}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-          {statusFilters.map((filter) => (
+          {statusFilters.map((filter, index) => (
             <TouchableOpacity
-              key={filter.id}
+              key={filter.id || `filter-${index}`}
               style={[
                 styles.filterButton,
                 { borderColor },
@@ -285,9 +425,9 @@ const StatusScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         ) : (
-          filteredReports.map((report) => (
+          filteredReports.map((report, index) => (
             <TouchableOpacity
-              key={report.id}
+              key={report.id || `report-${index}`}
               style={[styles.reportCard, { backgroundColor: cardBgColor, borderColor }]}
               onPress={() => handleViewDetails(report)}
             >
@@ -299,35 +439,35 @@ const StatusScreen = ({ navigation }) => {
                   </Text>
                 </View>
                 <View style={styles.reportMeta}>
-                  <Text style={[styles.reportId, { color: textColor }]}>#{report.id}</Text>
+                  <Text style={[styles.reportId, { color: textColor }]}>#{String(report._id || '')}</Text>
                 </View>
               </View>
 
               <View style={styles.reportStatus}>
                 <View style={styles.statusRow}>
                   <Text style={[styles.statusText, { color: getStatusColor(report.status) }]}>
-                    ● {report.status}
+                    ● {String(report.status || '')}
                   </Text>
                   <Text style={[styles.departmentText, { color: textColor }]}>
-                    {report.assignedDepartment}
+                    {String(report.assignedDepartment || '')}
                   </Text>
                 </View>
                 
                 <View style={styles.datesRow}>
                   <Text style={[styles.dateText, { color: textColor }]}>
-                    Submitted: {report.submittedDate}
+                    Submitted: {formatDate(report.createdAt) || 'N/A'}
                   </Text>
                   <Text style={[styles.dateText, { color: textColor }]}>
-                    Updated: {report.lastUpdate}
+                    Updated: {formatDate(report.updatedAt) || 'N/A'}
                   </Text>
                 </View>
 
                 <View style={styles.statsRow}>
                   <Text style={[styles.statText, { color: textColor }]}>
-                    👍 {report.upvotes} upvotes
+                    👍 {(report.upvotes?.length || 0)} upvotes
                   </Text>
                   <Text style={[styles.statText, { color: textColor }]}>
-                    💬 {report.comments} comments
+                    💬 {(report.comments?.length || 0)} comments
                   </Text>
                 </View>
               </View>
@@ -335,7 +475,7 @@ const StatusScreen = ({ navigation }) => {
               <View style={styles.latestUpdate}>
                 <Text style={[styles.updateLabel, { color: textColor }]}>Latest Update:</Text>
                 <Text style={[styles.updateText, { color: textColor }]}>
-                  {report.updates[report.updates.length - 1].message}
+                  {report.latestUpdate || 'No updates available'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -354,7 +494,16 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingVertical: 20,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerContent: {
+    flex: 1,
+  },
+  headerRight: {
+    marginLeft: 16,
   },
   headerTitle: {
     fontSize: 28,

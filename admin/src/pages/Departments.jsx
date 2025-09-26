@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiEdit2, FiTrash2, FiPlus, FiUserPlus, FiSearch } from 'react-icons/fi';
 import { useToast } from '../hooks/useToast';
-import { mockDepartments, mockStaff, mockIssues } from '../data/mockData';
+import api from '../config/axios';
 
 const Departments = () => {
   const [departments, setDepartments] = useState([]);
@@ -15,15 +15,54 @@ const Departments = () => {
   const toast = useToast();
 
   useEffect(() => {
-    // Simulate API fetch with mock data
-    setLoading(true);
-    setTimeout(() => {
-      setDepartments(mockDepartments);
-      setStaff(mockStaff);
-      // Filter issues that have classifiedDept assigned
-      setIssues(mockIssues.filter(issue => issue.classifiedDept));
-      setLoading(false);
-    }, 500);
+    const load = async () => {
+      try {
+        setLoading(true);
+        // Fetch departments (public route)
+        const depRes = await api.get('/departments/get-all-departments');
+        const deps = (depRes.data?.data || []).map(d => ({
+          _id: d._id,
+          name: d.name || d.departmentName || d.type || 'Department',
+          type: d.type,
+          email: d.email,
+          phone: d.phone,
+        }));
+        setDepartments(deps);
+
+        // Fetch all issues once and group by department
+        let allIssues = [];
+        try {
+          const issuesRes = await api.get('/issues/all');
+          allIssues = issuesRes.data?.data || issuesRes.data?.issues || [];
+        } catch (e) {
+          allIssues = [];
+        }
+        const issuesByDept = deps.reduce((acc, d) => {
+          acc[d._id] = allIssues.filter(i => (i.finalDept || i.assignedDept) === (d.type || d.name));
+          return acc;
+        }, {});
+        setIssues(issuesByDept);
+
+        // Fetch members per department (few requests only)
+        const membersList = await Promise.all(
+          deps.map(async (d) => {
+            try {
+              const res = await api.get(`/departments/${d.type || d.name}/members`);
+              return { key: d._id, members: res.data?.data?.members || [] };
+            } catch {
+              return { key: d._id, members: [] };
+            }
+          })
+        );
+        const staffByDept = membersList.reduce((acc, cur) => { acc[cur.key] = cur.members; return acc; }, {});
+        setStaff(staffByDept);
+      } catch (e) {
+        toast.error('Failed to load departments');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
 
   const handleAddDepartment = (departmentData) => {
@@ -61,11 +100,11 @@ const Departments = () => {
   };
 
   const getDepartmentIssues = (deptId) => {
-    return issues.filter(issue => issue.classifiedDept === deptId);
+    return issues[deptId] || [];
   };
 
   const getDepartmentStaff = (deptId) => {
-    return staff.filter(s => s.department === deptId);
+    return staff[deptId] || [];
   };
 
   if (loading) {
@@ -141,20 +180,13 @@ const Departments = () => {
                   </div>
                 </div>
 
-                <p className="text-gray-600 mb-4">{department.description}</p>
+                <p className="text-gray-600 mb-4">Type: {department.type || 'N/A'}</p>
 
                 <div className="mb-4">
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Department Head</h3>
-                  <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                      <span className="text-sm font-medium text-blue-800">
-                        {department.head[0]}
-                      </span>
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">{department.head}</p>
-                      <p className="text-sm text-gray-500">{department.email}</p>
-                    </div>
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">Contact</h3>
+                  <div className="text-sm text-gray-700 space-y-1">
+                    <p>Email: {department.email || '—'}</p>
+                    <p>Phone: {department.phone || '—'}</p>
                   </div>
                 </div>
 
@@ -171,12 +203,12 @@ const Departments = () => {
                         <div className="flex items-center">
                           <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center">
                             <span className="text-xs font-medium text-gray-600">
-                              {staffMember.name[0]}
+                              {(staffMember.name || 'S')[0]}
                             </span>
                           </div>
-                          <span className="ml-2 text-sm text-gray-600">{staffMember.name}</span>
+                          <span className="ml-2 text-sm text-gray-600">{staffMember.name || staffMember.email || 'Staff'}</span>
                         </div>
-                        <span className="text-xs text-gray-500">{staffMember.role}</span>
+                        <span className="text-xs text-gray-500">{staffMember.role || 'STAFF'}</span>
                       </div>
                     ))}
                   </div>
@@ -197,7 +229,7 @@ const Departments = () => {
                           ${issue.status === 'REPORTED' ? 'bg-yellow-100 text-yellow-800' : ''}
                           ${issue.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' : ''}
                           ${issue.status === 'RESOLVED' ? 'bg-green-100 text-green-800' : ''}
-                          ${issue.status === 'REJECTED' ? 'bg-red-100 text-red-800' : ''}
+                          ${issue.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' : ''}
                         `}>
                           {issue.status}
                         </span>

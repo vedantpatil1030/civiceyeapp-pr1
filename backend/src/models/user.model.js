@@ -43,4 +43,18 @@ userSchema.methods.generateRefreshToken = function () {
   );
 };
 
+// Add pre-save middleware to format phone number
+userSchema.pre('save', function(next) {
+  if (this.mobileNumber) {
+    // Remove any non-digit characters and ensure it's a string
+    this.mobileNumber = this.mobileNumber.toString().replace(/\D/g, '');
+  }
+  next();
+});
+
+// Add a custom query helper
+userSchema.query.byPhone = function(phone) {
+  return this.where({ mobileNumber: phone.toString().replace(/\D/g, '') });
+};
+
 export const User = mongoose.model("User", userSchema);

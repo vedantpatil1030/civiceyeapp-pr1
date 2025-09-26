@@ -13,27 +13,55 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Check for token in cookies or localStorage for persistent login
+    // Check for token and user data on mount
     const token = localStorage.getItem('accessToken');
-    if (token) {
+    const storedUser = localStorage.getItem('user');
+    
+    if (token && storedUser) {
       setIsAuthenticated(true);
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error('Failed to parse stored user:', error);
+      }
     }
     setLoading(false);
   }, []);
 
-  // login now just sets isAuthenticated true and stores a flag
-  const login = () => {
+  const login = (userData, tokens) => {
+    const { accessToken, refreshToken } = tokens;
+    
+    // Store tokens
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+    
+    // Store user data
+    localStorage.setItem('user', JSON.stringify(userData));
+    
+    // Update state
+    setUser(userData);
     setIsAuthenticated(true);
-    localStorage.setItem('isAuthenticated', 'true');
+    
+    console.log('Auth state updated:', {
+      isAuthenticated: true,
+      user: userData,
+      token: accessToken
+    });
   };
 
   const logout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('isAuthenticated');
+    // Clear all stored data
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    
+    // Reset state
+    setIsAuthenticated(false);
+    setUser(null);
   };
 
   return (

@@ -2,6 +2,12 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ProtectedRoute = ({ children }) => {
+  // TEMPORARY: Authentication bypass for development
+  // TODO: REMOVE THIS BEFORE PRODUCTION
+  return children;
+
+  // Original authentication logic (commented out temporarily)
+  /*
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
@@ -17,6 +23,7 @@ const ProtectedRoute = ({ children }) => {
   }
 
   return children;
+  */
 };
 
 export default ProtectedRoute;

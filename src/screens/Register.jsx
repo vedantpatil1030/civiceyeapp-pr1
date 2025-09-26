@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, Platform, PermissionsAndroid, Linking } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker'; 
 import { useNavigation, useIsFocused } from '@react-navigation/native';
-// import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios'; 
+import api from '../../services/api';
 const defaultAvatar = 'https://www.svgrepo.com/show/382106/profile-avatar.svg';
 
 const genderOptions = [
@@ -93,8 +92,30 @@ const RegisterScreen = () => {
     }
     setLoading(true);
     try {
+      // First check if user exists
+      console.log('Checking if user exists:', phone);
+      try {
+        await api.post("/users/check-register", {
+          mobileNumber: phone,
+        });
+      } catch (checkError) {
+        if (checkError.response?.data?.message === 'User already exists, please login') {
+          Alert.alert(
+            "Account Exists",
+            "An account with this number already exists. Would you like to login?",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Login", onPress: () => navigation.replace('Login') }
+            ]
+          );
+          setLoading(false);
+          return;
+        }
+      }
+
+      // If we get here, user doesn't exist, proceed with OTP
       console.log('📞 Sending OTP to:', phone);
-      const res = await axios.post("http://10.0.2.2:8000/api/v1/otp/send", {
+      const res = await api.post("/otp/send", {
         mobileNumber: phone,
       });
       console.log('📨 OTP Response:', res.data);

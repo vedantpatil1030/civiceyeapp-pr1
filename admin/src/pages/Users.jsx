@@ -11,7 +11,7 @@ const Users = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
-  // const [editingUser, setEditingUser] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
   const toast = useToast();
 
   // 🔹 Fetch users from backend
@@ -99,6 +99,39 @@ const Users = () => {
     return matchesSearch && matchesRole;
   });
 
+  const roleBadge = (role) => {
+    switch (role) {
+      case 'MUNICIPAL_ADMIN':
+        return 'bg-indigo-100 text-indigo-700';
+      case 'DEPARTMENT_ADMIN':
+        return 'bg-emerald-100 text-emerald-700';
+      case 'STAFF':
+        return 'bg-sky-100 text-sky-700';
+      case 'CITIZEN':
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const renderAvatar = (user) => {
+    if (user.avatar) {
+      return (
+        <img src={user.avatar} alt={user.fullName} className="h-8 w-8 rounded-full object-cover" />
+      );
+    }
+    const initials = (user.fullName || 'U N')
+      .split(' ')
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+    return (
+      <div className="h-8 w-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-semibold">
+        {initials}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -122,19 +155,19 @@ const Users = () => {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Users Management</h1>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+        <h1 className="text-2xl font-semibold text-slate-800">Users</h1>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md font-medium transition duration-200"
+          className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
         >
           <FiUserPlus className="w-5 h-5" />
-          Add New User
+          Add User
         </button>
       </div>
 
       {/* Search and Filters */}
-      <div className="flex gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1">
           <input
             type="text"
@@ -151,20 +184,19 @@ const Users = () => {
           className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Roles</option>
-          <option value="ADMIN">Admin</option>
+          <option value="MUNICIPAL_ADMIN">Municipal Admin</option>
+          <option value="DEPARTMENT_ADMIN">Department Admin</option>
+          <option value="STAFF">Staff</option>
           <option value="CITIZEN">Citizen</option>
-          <option value="DEPARTMENT">Department</option>
         </select>
       </div>
 
       {/* Users Table */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200 border">
+      <div className="overflow-x-auto rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+        <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Full Name
-              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">User</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Email
               </th>
@@ -174,12 +206,8 @@ const Users = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Aadhar Number
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Gender
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Role
-              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gender</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Created At
               </th>
@@ -189,41 +217,54 @@ const Users = () => {
             </tr>
           </thead>
 
-          <tbody className="bg-sky-950 divide-y bg-sky-950">
-            {filteredUsers.map((user) => (
-              <tr key={user._id}>
-                <td className="px-6 py-4">{user.fullName || 'N/A'}</td>
-                <td className="px-6 py-4">{user.email || 'N/A'}</td>
-                <td className="px-6 py-4">{user.mobileNumber || 'N/A'}</td>
-                <td className="px-6 py-4">{user.aadharNumber || 'N/A'}</td>
-                <td className="px-6 py-4">{user.gender || 'N/A'}</td>
-                <td className="px-6 py-4">{user.role || 'N/A'}</td>
-                <td className="px-6 py-4">{formatDate(user.createdAt)}</td>
-                <td className="px-6 py-4 text-center flex gap-2 justify-center">
-
-                  {/* <button
-                    onClick={() => setEditingUser(user)}
-                    className="text-blue-500 hover:text-blue-700"
-                  > */}
-                    {/* <FiEdit2 />
-                  </button> */}
-
-                  <button
-                    onClick={() => setEditingUser(user)}
-                    className="text-blue-500 hover:text-blue-700"
-                  >
-                    <FiEdit2 />
-                  </button>
-
-                  <button
-                    onClick={() => handleDeleteUser(user._id)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <FiTrash2 />
-                  </button>
-                </td>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-6 py-8 text-center text-slate-500">No users found</td>
               </tr>
-            ))}
+            ) : (
+              filteredUsers.map((user) => (
+                <tr key={user._id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      {renderAvatar(user)}
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">{user.fullName || 'N/A'}</div>
+                        <div className="text-xs text-slate-500">ID: {user._id}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-700">{user.email || 'N/A'}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700">{user.mobileNumber || 'N/A'}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700">{user.aadharNumber || 'N/A'}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700 capitalize">{user.gender || 'N/A'}</td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${roleBadge(user.role)}`}>
+                      {user.role || 'N/A'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-700">{formatDate(user.createdAt)}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => setEditingUser(user)}
+                        className="text-sky-600 hover:text-sky-800"
+                        title="Edit"
+                      >
+                        <FiEdit2 />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(user._id)}
+                        className="text-rose-600 hover:text-rose-800"
+                        title="Delete"
+                      >
+                        <FiTrash2 />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

@@ -43,7 +43,12 @@ const createIssue = asyncHandler(async (req, res) => {
       const mlResp = await classifyImage(localPath);
       classifiedDept = mlResp?.predicted_department || classifiedDept;
     } catch (err) {
-      console.error("ML classify failed:", err.response?.data || err.message);
+      console.error("ML classify failed:", {
+        error: err.message,
+        response: err.response?.data,
+        file: file.originalname
+      });
+      // Continue without ML classification if it fails
     }
 
     // Step 2: Compress the file
@@ -214,7 +219,7 @@ const upvote = asyncHandler(async(req,res) => {
     return res.json({ message: "Upvote toggled", data: issue });
 });
 
-const addComment = asyncHandler(async (req,res) => {
+const addCommentLegacy = asyncHandler(async (req,res) => {
     const { issueId } = req.params;
     const { text } = req.body;
     if(!text) return res.status(400).json({ message: "Text required" });
@@ -268,6 +273,12 @@ const nearbyIssues = asyncHandler(async (req, res) => {
 const getMyIssues = asyncHandler(async (req, res) => {
     const userId = req.user._id;
     const issues = await Issue.find({ reportedBy: userId })
+        .populate('reportedBy', 'username email')
+        .populate('upvotes', 'username')
+        .populate({
+            path: 'comments.user',
+            select: 'username avatar'
+        })
         .sort({ createdAt: -1 });
     return res.status(200).json(
         new ApiResponse(200, {
@@ -292,7 +303,9 @@ const getAllIssues = asyncHandler(async (req,res) => {
       .populate("assignedToStaff", "name email")
       .sort({ createdAt: -1 });
 
-    return res.json({ data: issues });
+    return res.status(200).json(
+        new ApiResponse(200, issues, "Issues fetched successfully")
+    );
 })
 
 /**
@@ -459,13 +472,75 @@ const raiseDeptComplaint = asyncHandler(async (req, res) => {
 });
 
 
+// Add a comment to an issue (new version)
+const addComment = asyncHandler(async (req, res) => {
+    const { issueId } = req.params;
+    const { text } = req.body;
+    const userId = req.user._id;
+
+    if (!issueId || !text?.trim()) {
+        throw new ApiError(400, "Issue ID and comment text are required");
+    }
+
+    const issue = await Issue.findById(issueId);
+    if (!issue) {
+        throw new ApiError(404, "Issue not found");
+    }
+
+    issue.comments.push({
+        user: userId,
+        text: text.trim()
+    });
+
+    await issue.save();
+
+    // Populate the newly added comment with user details
+    const populatedIssue = await Issue.findById(issueId)
+        .populate({
+            path: 'comments.user',
+            select: 'username avatar'
+        });
+
+    const newComment = populatedIssue.comments[populatedIssue.comments.length - 1];
+
+    return res.status(201).json(
+        new ApiResponse(201, { comment: newComment }, "Comment added successfully")
+    );
+});
+
+// Get all comments for an issue
+const getComments = asyncHandler(async (req, res) => {
+    const { issueId } = req.params;
+    
+    if (!issueId) {
+        throw new ApiError(400, "Issue ID is required");
+    }
+
+    const issue = await Issue.findById(issueId)
+        .populate({
+            path: 'comments.user',
+            select: 'username avatar'
+        })
+        .select('comments');
+
+    if (!issue) {
+        throw new ApiError(404, "Issue not found");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, { comments: issue.comments }, "Comments retrieved successfully")
+    );
+});
+
 export {
     createIssue,
     adminAssign,
     staffUploadProof,
     changeStatus,
-    upvote,
+    upvote as upvoteIssue,
     addComment,
+    addCommentLegacy,
+    getComments,
     nearbyIssues,
     generateReport,
     getAllIssues,
